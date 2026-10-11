@@ -17,4 +17,7 @@ public sealed partial class ConnectPage : Page
     }
 
     private void OnContinueRequested(object? sender, EventArgs e) => Frame.Navigate(typeof(ChatPage));
+
+    private void ImportButton_Click(object sender, RoutedEventArgs e) =>
+        Frame.Navigate(typeof(ImportPage), "connect");
 }

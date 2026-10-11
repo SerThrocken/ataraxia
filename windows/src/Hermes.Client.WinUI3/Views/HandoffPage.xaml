@@ -1,0 +1,54 @@
+<Page
+    x:Class="Hermes.Client.WinUI3.Views.HandoffPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer>
+        <StackPanel Padding="32" Spacing="12" MaxWidth="520"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock Text="Hand off to phone" Style="{StaticResource TitleLargeTextBlockStyle}" />
+            <TextBlock Text="Scan this code with the Ataraxia Android app to continue the session on your phone. The code carries a single-use pairing token — never your API key — and expires in 2 minutes."
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
+
+            <TextBlock Text="{x:Bind ViewModel.SessionLabel, Mode=OneWay}"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       AutomationProperties.Name="Session being handed off" />
+
+            <Border Width="320" Height="320"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8"
+                    HorizontalAlignment="Center">
+                <Image Source="{x:Bind ViewModel.QrImage, Mode=OneWay}"
+                       Stretch="Uniform" Margin="16"
+                       AutomationProperties.Name="QR code for session handoff. Scan with the Ataraxia Android app." />
+            </Border>
+
+            <TextBlock Text="{x:Bind ViewModel.ExpiresText, Mode=OneWay}"
+                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                       HorizontalAlignment="Center"
+                       AutomationProperties.LiveSetting="Polite" />
+
+            <Button Content="Generate new code"
+                    AutomationProperties.Name="Generate handoff QR code"
+                    Command="{x:Bind ViewModel.GenerateCommand}"
+                    Style="{StaticResource AccentButtonStyle}"
+                    HorizontalAlignment="Center">
+                <Button.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Enter" />
+                </Button.KeyboardAccelerators>
+            </Button>
+
+            <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

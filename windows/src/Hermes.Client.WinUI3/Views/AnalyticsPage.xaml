@@ -1,0 +1,112 @@
+<Page
+    x:Class="Hermes.Client.WinUI3.Views.AnalyticsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:core="using:Hermes.Client.Core"
+    xmlns:controls="using:Hermes.Client.WinUI3.Controls"
+    xmlns:vm="using:Hermes.Client.WinUI3.ViewModels"
+    mc:Ignorable="d"
+    AutomationProperties.Name="Cost analytics">
+
+    <Page.Resources>
+        <controls:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+    </Page.Resources>
+
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <TextBlock Text="Cost analytics" Style="{StaticResource TitleTextBlockStyle}" />
+            <Button Content="Refresh"
+                    Command="{x:Bind ViewModel.RefreshCommand}"
+                    AutomationProperties.Name="Refresh cost analytics"
+                    ToolTipService.ToolTip="Reload all sessions and recompute spend" />
+            <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                          Width="20" Height="20"
+                          AutomationProperties.Name="Loading analytics" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Spacing="4">
+            <TextBlock Text="{x:Bind ViewModel.Headline, Mode=OneWay}"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       AutomationProperties.Name="Analytics headline" />
+            <TextBlock Text="{x:Bind ViewModel.Error, Mode=OneWay}"
+                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                       Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="Analytics error" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="20">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Spend per day" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.DailyRows, Mode=OneWay}"
+                                  AutomationProperties.Name="Daily spend chart">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DailySpendRow">
+                                <StackPanel Orientation="Horizontal" Spacing="8" Padding="0,3"
+                                            AutomationProperties.Name="{x:Bind SpendLabel}">
+                                    <TextBlock Text="{x:Bind DateLabel}" Width="80"
+                                               Style="{StaticResource BodyTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <Border Width="{x:Bind BarWidth}" Height="14"
+                                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                            CornerRadius="2"
+                                            AutomationProperties.AccessibilityView="Raw" />
+                                    <TextBlock Text="{x:Bind SpendLabel}"
+                                               Style="{StaticResource BodyTextBlockStyle}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Spend per provider" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.ProviderRows, Mode=OneWay}"
+                                  AutomationProperties.Name="Per-provider spend chart">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProviderSpendRow">
+                                <StackPanel Orientation="Horizontal" Spacing="8" Padding="0,3"
+                                            AutomationProperties.Name="{x:Bind SpendLabel}">
+                                    <TextBlock Text="{x:Bind Spend.Provider}" Width="120"
+                                               Style="{StaticResource BodyTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <Border Width="{x:Bind BarWidth}" Height="14"
+                                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                            CornerRadius="2"
+                                            AutomationProperties.AccessibilityView="Raw" />
+                                    <TextBlock Text="{x:Bind SpendLabel}"
+                                               Style="{StaticResource BodyTextBlockStyle}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Top sessions by cost" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <ListView ItemsSource="{x:Bind ViewModel.TopSessions, Mode=OneWay}"
+                              SelectionMode="None"
+                              AutomationProperties.Name="Top sessions by cost">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="core:SessionSpend">
+                                <TextBlock Text="{x:Bind Summary}" Padding="0,6"
+                                           TextWrapping="Wrap"
+                                           Style="{StaticResource BodyTextBlockStyle}" />
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

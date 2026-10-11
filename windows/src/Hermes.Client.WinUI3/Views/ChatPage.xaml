@@ -28,7 +28,7 @@
                         AutomationProperties.Name="Assistant message">
                 <Expander Header="Reasoning"
                           Visibility="{x:Bind HasReasoning, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
-                          AutomationProperties.Name="Reasoning, collapsed">
+                          AutomationProperties.Name="Reasoning">
                     <TextBlock Text="{x:Bind Reasoning, Mode=OneWay}"
                                TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -98,11 +98,39 @@
                        AutomationProperties.Name="Tool message" />
         </DataTemplate>
 
+        <DataTemplate x:Key="QueuedTemplate" x:DataType="vm:QueuedMessageItem">
+            <Border HorizontalAlignment="Right" MaxWidth="720"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="48,4,0,4"
+                    AutomationProperties.Name="{x:Bind Text, Mode=OneWay}">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{x:Bind Text, Mode=OneWay}"
+                               TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    <TextBlock Text="{x:Bind Status, Mode=OneWay}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               AutomationProperties.Name="Queue status" />
+                    <TextBlock Text="{x:Bind Error, Mode=OneWay}"
+                               Visibility="{x:Bind HasError, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.Name="Queue error" />
+                    <Button Content="Retry sending"
+                            Command="{x:Bind RetryCommand}"
+                            Visibility="{x:Bind HasError, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                            AutomationProperties.Name="Retry sending queued message" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
         <controls:TranscriptTemplateSelector x:Key="TranscriptSelector"
                                              UserTemplate="{StaticResource UserTemplate}"
                                              AssistantTemplate="{StaticResource AssistantTemplate}"
                                              ApprovalTemplate="{StaticResource ApprovalTemplate}"
-                                             ToolTemplate="{StaticResource ToolTemplate}" />
+                                             ToolTemplate="{StaticResource ToolTemplate}"
+                                             QueuedTemplate="{StaticResource QueuedTemplate}" />
     </Page.Resources>
 
     <Grid ColumnSpacing="0">
@@ -118,6 +146,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Text="{x:Bind ViewModel.SessionTitle, Mode=OneWay}"
@@ -132,7 +161,6 @@
                        AutomationProperties.Name="Chat error" />
 
             <ListView Grid.Row="2"
-                      x:Name="TranscriptList"
                       ItemsSource="{x:Bind ViewModel.Transcript, Mode=OneWay}"
                       ItemTemplateSelector="{StaticResource TranscriptSelector}"
                       SelectionMode="None"
@@ -145,7 +173,16 @@
                 </ListView.ItemContainerStyle>
             </ListView>
 
-            <Grid Grid.Row="3" ColumnSpacing="8">
+            <InfoBar Grid.Row="3"
+                     IsOpen="{x:Bind ViewModel.HasQueued, Mode=OneWay}"
+                     Severity="Informational"
+                     Title="{x:Bind ViewModel.QueueStatusText, Mode=OneWay}"
+                     Message="Messages are stored on this device and send automatically when the gateway reconnects."
+                     IsClosable="False"
+                     AutomationProperties.Name="{x:Bind ViewModel.QueueStatusText, Mode=OneWay}"
+                     AutomationProperties.LiveSetting="Polite" />
+
+            <Grid Grid.Row="4" ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />

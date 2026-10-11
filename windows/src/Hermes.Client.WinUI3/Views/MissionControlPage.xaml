@@ -1,0 +1,244 @@
+<Page
+    x:Class="Hermes.Client.WinUI3.Views.MissionControlPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:core="using:Hermes.Client.Core"
+    xmlns:viewmodels="using:Hermes.Client.WinUI3.ViewModels"
+    xmlns:controls="using:Hermes.Client.WinUI3.Controls"
+    mc:Ignorable="d"
+    AutomationProperties.Name="Mission Control">
+
+    <Page.Resources>
+        <controls:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <controls:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+        <controls:NullToVisibilityConverter x:Key="NullToVisibility" />
+        <controls:RunStatusToBrushConverter x:Key="RunStatusToBrush" />
+    </Page.Resources>
+
+    <Grid Padding="24" ColumnSpacing="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Runs list + fleet pulse -->
+        <Grid Grid.Column="0" RowSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Spacing="8">
+                <TextBlock Text="Mission Control" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="{x:Bind ViewModel.FleetSummary, Mode=OneWay}"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           AutomationProperties.Name="Fleet status" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="New run"
+                            Click="NewRunButton_Click"
+                            AutomationProperties.Name="Start a new agent run"
+                            ToolTipService.ToolTip="Start a new agent run on the gateway" />
+                    <Button Content="Watch run"
+                            Click="WatchRunButton_Click"
+                            AutomationProperties.Name="Watch an existing run by id"
+                            ToolTipService.ToolTip="Track a run id (for example from a toast)" />
+                    <Button Content="Refresh"
+                            Command="{x:Bind ViewModel.RefreshFleetCommand}"
+                            AutomationProperties.Name="Refresh fleet status"
+                            ToolTipService.ToolTip="Refresh the gateway fleet counters" />
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock Grid.Row="1"
+                       Text="{x:Bind ViewModel.Error, Mode=OneWay}"
+                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                       Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="Mission control error" />
+
+            <ListView Grid.Row="2"
+                      ItemsSource="{x:Bind ViewModel.Runs, Mode=OneWay}"
+                      SelectedItem="{x:Bind ViewModel.SelectedRun, Mode=TwoWay}"
+                      SelectionMode="Single"
+                      AutomationProperties.Name="Tracked agent runs">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="viewmodels:TrackedRun">
+                        <StackPanel Padding="4,10" Spacing="2"
+                                    AutomationProperties.Name="{x:Bind ShortId}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse Width="10" Height="10"
+                                         VerticalAlignment="Center"
+                                         Fill="{x:Bind Status.Status, Converter={StaticResource RunStatusToBrush}, Mode=OneWay}"
+                                         AutomationProperties.AccessibilityView="Raw" />
+                                <TextBlock Text="{x:Bind ShortId}"
+                                           Style="{StaticResource SubtitleTextBlockStyle}" />
+                            </StackPanel>
+                            <TextBlock Text="{x:Bind DisplayStatus, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="{x:Bind Status.Model, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+
+        <!-- Run detail -->
+        <Grid Grid.Column="1" RowSpacing="12"
+              Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse Width="12" Height="12"
+                             VerticalAlignment="Center"
+                             Fill="{x:Bind ViewModel.SelectedRun.Status.Status, Converter={StaticResource RunStatusToBrush}, Mode=OneWay}"
+                             AutomationProperties.AccessibilityView="Raw" />
+                    <TextBlock Text="{x:Bind ViewModel.SelectedRun.ShortId, Mode=OneWay}"
+                               Style="{StaticResource TitleTextBlockStyle}"
+                               AutomationProperties.Name="Selected run id" />
+                </StackPanel>
+                <TextBlock Text="{x:Bind ViewModel.SelectedRun.Status.Output, Mode=OneWay}"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap"
+                           MaxLines="3" TextTrimming="CharacterEllipsis"
+                           AutomationProperties.Name="Run output" />
+                <TextBlock Text="{x:Bind ViewModel.SelectedRun.Error, Mode=OneWay}"
+                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                           Visibility="{x:Bind ViewModel.SelectedRun.Error, Mode=OneWay, Converter={StaticResource NullToVisibility}}"
+                           TextWrapping="Wrap"
+                           AutomationProperties.Name="Run error" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                <Button Content="Steer"
+                        Click="SteerButton_Click"
+                        IsEnabled="{x:Bind ViewModel.CanControlRun, Mode=OneWay}"
+                        AutomationProperties.Name="Steer the selected run"
+                        ToolTipService.ToolTip="Send guidance to the running agent" />
+                <Button Content="Stop"
+                        Click="StopButton_Click"
+                        IsEnabled="{x:Bind ViewModel.CanControlRun, Mode=OneWay}"
+                        AutomationProperties.Name="Stop the selected run"
+                        ToolTipService.ToolTip="Interrupt the running agent" />
+                <Button Content="Approve"
+                        Click="ApproveButton_Click"
+                        Visibility="{x:Bind ViewModel.ShowApprovalActions, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                        Style="{StaticResource AccentButtonStyle}"
+                        AutomationProperties.Name="Approve the pending request"
+                        ToolTipService.ToolTip="Approve once" />
+                <Button Content="Deny"
+                        Click="DenyButton_Click"
+                        Visibility="{x:Bind ViewModel.ShowApprovalActions, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                        AutomationProperties.Name="Deny the pending request"
+                        ToolTipService.ToolTip="Deny the pending request" />
+            </StackPanel>
+
+            <!-- Replay scrubber -->
+            <StackPanel Grid.Row="2" Spacing="8"
+                        Visibility="{x:Bind ViewModel.IsReplaying, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Content="Pause"
+                            Command="{x:Bind ViewModel.PauseReplayCommand}"
+                            Visibility="{x:Bind ViewModel.ReplayPlaying, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                            AutomationProperties.Name="Pause replay" />
+                    <Button Content="Play"
+                            Command="{x:Bind ViewModel.ResumeReplayCommand}"
+                            Visibility="{x:Bind ViewModel.ReplayPlaying, Mode=OneWay, Converter={StaticResource InverseBoolToVisibility}}"
+                            AutomationProperties.Name="Play replay" />
+                    <Slider Minimum="0"
+                            Maximum="{x:Bind ViewModel.ReplayMaximum, Mode=OneWay}"
+                            Value="{x:Bind ViewModel.ReplayIndex, Mode=TwoWay}"
+                            Width="320"
+                            AutomationProperties.Name="Replay scrubber"
+                            ToolTipService.ToolTip="Scrub through the run's event timeline" />
+                    <Button Content="End replay"
+                            Command="{x:Bind ViewModel.EndReplayCommand}"
+                            AutomationProperties.Name="End replay" />
+                </StackPanel>
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="12"
+                        AutomationProperties.Name="Replay event">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{x:Bind ViewModel.ReplayEvent.Name, Mode=OneWay, FallbackValue=''}"
+                                   Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock Text="{x:Bind ViewModel.ReplayEvent.Summary, Mode=OneWay, FallbackValue=''}"
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}">
+                            <Run Text="seq " /><Run Text="{x:Bind ViewModel.ReplayEvent.Seq, Mode=OneWay, FallbackValue=''}" /><Run Text=" • " /><Run Text="{x:Bind ViewModel.ReplayEvent.TimeText, Mode=OneWay, FallbackValue=''}" />
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <Button Grid.Row="3"
+                    Content="Replay run"
+                    Command="{x:Bind ViewModel.BeginReplayCommand}"
+                    Visibility="{x:Bind ViewModel.IsReplaying, Mode=OneWay, Converter={StaticResource InverseBoolToVisibility}}"
+                    HorizontalAlignment="Left"
+                    AutomationProperties.Name="Replay the run's event timeline"
+                    ToolTipService.ToolTip="Scrub through this run's recorded events" />
+
+            <!-- Event timeline -->
+            <ListView Grid.Row="4"
+                      ItemsSource="{x:Bind ViewModel.SelectedRun.Events, Mode=OneWay}"
+                      SelectionMode="None"
+                      AutomationProperties.Name="Run event timeline">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="core:RunEvent">
+                        <StackPanel Padding="4,8" Spacing="2"
+                                    AutomationProperties.Name="{x:Bind Name}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{x:Bind TimeText}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                <TextBlock Text="{x:Bind Name}"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <!-- RunEvent is an immutable record: OneTime is correct and warning-free. -->
+                            <TextBlock Text="{x:Bind Seq, Mode=OneTime}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            </StackPanel>
+                            <TextBlock Text="{x:Bind Summary}"
+                                       Style="{StaticResource BodyTextBlockStyle}"
+                                       TextWrapping="Wrap"
+                                       MaxLines="4" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+
+        <!-- Empty state -->
+        <StackPanel Grid.Column="1"
+                    VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8"
+                    Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay, Converter={StaticResource InverseBoolToVisibility}}">
+            <TextBlock Text="No run selected"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="Start a new run or watch an existing run id to see its live timeline."
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</Page>

@@ -1,0 +1,73 @@
+<Page
+    x:Class="Hermes.Client.WinUI3.Views.DiagnosticsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:core="using:Hermes.Client.Core"
+    xmlns:controls="using:Hermes.Client.WinUI3.Controls"
+    mc:Ignorable="d"
+    AutomationProperties.Name="Diagnostics">
+
+    <Page.Resources>
+        <controls:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <controls:DiagnosticStatusToBrushConverter x:Key="StatusBrush" />
+    </Page.Resources>
+
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <TextBlock Text="Diagnostics" Style="{StaticResource TitleTextBlockStyle}" />
+            <Button Content="Run diagnostics"
+                    Command="{x:Bind ViewModel.RunCommand}"
+                    AutomationProperties.Name="Run diagnostics"
+                    ToolTipService.ToolTip="Run the one-tap gateway diagnostics" />
+            <ProgressRing IsActive="{x:Bind ViewModel.IsRunning, Mode=OneWay}"
+                          Width="20" Height="20"
+                          AutomationProperties.Name="Diagnostics running" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Spacing="4">
+            <TextBlock Text="{x:Bind ViewModel.Summary, Mode=OneWay}"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       AutomationProperties.Name="Diagnostics summary"
+                       AutomationProperties.LiveSetting="Polite" />
+            <TextBlock Text="{x:Bind ViewModel.Error, Mode=OneWay}"
+                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                       Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="Diagnostics error" />
+        </StackPanel>
+
+        <ListView Grid.Row="2"
+                  ItemsSource="{x:Bind ViewModel.Checks, Mode=OneWay}"
+                  SelectionMode="None"
+                  AutomationProperties.Name="{x:Bind ViewModel.ScreenReaderSummary, Mode=OneWay}">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="core:DiagnosticCheck">
+                    <StackPanel Orientation="Horizontal" Spacing="12" Padding="0,8">
+                        <Ellipse Width="12" Height="12" Margin="0,4,0,0"
+                                 Fill="{x:Bind Status, Converter={StaticResource StatusBrush}}"
+                                 AutomationProperties.AccessibilityView="Raw" />
+                        <StackPanel Spacing="2">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}">
+                                <Run Text="{x:Bind Name}" />
+                                <Run Text=" — " />
+                                <Run Text="{x:Bind Status}" />
+                            </TextBlock>
+                            <TextBlock Text="{x:Bind Detail}"
+                                       Style="{StaticResource BodyTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Page>

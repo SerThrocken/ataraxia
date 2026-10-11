@@ -6,8 +6,26 @@ using Hermes.Client.Core;
 namespace Hermes.Client.WinUI3.ViewModels;
 
 /// <summary>
+/// One node of the session fork tree, built from
+/// <see cref="Session.ParentSessionId"/> references.
+/// </summary>
+public sealed partial class ForkNode : ObservableObject
+{
+    public ForkNode(Session session) => Session = session;
+
+    public Session Session { get; }
+
+    public ObservableCollection<ForkNode> Children { get; } = new();
+
+    public string DisplayTitle =>
+        string.IsNullOrWhiteSpace(Session.Title) ? Session.Id : Session.Title;
+}
+
+/// <summary>
 /// Paginated session list: GET /api/sessions with limit/offset.
 /// Tap (select) a session to open it in chat; refresh re-loads page one.
+/// The fork tree (<see cref="ForkRoots"/>) is rebuilt from the loaded
+/// sessions' <c>ParentSessionId</c> references after every load.
 /// </summary>
 public sealed partial class SessionsViewModel : ObservableObject
 {
@@ -21,6 +39,9 @@ public sealed partial class SessionsViewModel : ObservableObject
     }
 
     public ObservableCollection<Session> Sessions { get; } = new();
+
+    /// <summary>Forest of fork trees: sessions without a known parent are roots.</summary>
+    public ObservableCollection<ForkNode> ForkRoots { get; } = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LoadMoreVisible))]
@@ -73,6 +94,7 @@ public sealed partial class SessionsViewModel : ObservableObject
 
             _offset += page.Sessions.Count;
             HasMore = page.HasMore;
+            RebuildForkTree();
         }
         catch (Exception ex)
         {
@@ -81,6 +103,47 @@ public sealed partial class SessionsViewModel : ObservableObject
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private void RebuildForkTree()
+    {
+        var nodes = Sessions
+            .GroupBy(s => s.Id)
+            .Select(g => new ForkNode(g.First()))
+            .ToDictionary(n => n.Session.Id);
+        var roots = new List<ForkNode>();
+        foreach (var node in nodes.Values)
+        {
+            var parentId = node.Session.ParentSessionId;
+            if (!string.IsNullOrEmpty(parentId)
+                && nodes.TryGetValue(parentId, out var parent)
+                && !ReferenceEquals(parent, node))
+            {
+                parent.Children.Add(node);
+            }
+            else
+            {
+                roots.Add(node);
+            }
+        }
+
+        ForkRoots.Clear();
+        foreach (var root in roots.OrderByDescending(r => r.Session.LastActive))
+        {
+            SortChildren(root);
+            ForkRoots.Add(root);
+        }
+    }
+
+    private static void SortChildren(ForkNode node)
+    {
+        var ordered = node.Children.OrderByDescending(c => c.Session.LastActive).ToList();
+        node.Children.Clear();
+        foreach (var child in ordered)
+        {
+            SortChildren(child);
+            node.Children.Add(child);
         }
     }
 

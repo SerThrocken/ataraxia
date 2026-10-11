@@ -46,6 +46,63 @@ public sealed partial class ToolMessageItem : TranscriptItem
 }
 
 /// <summary>
+/// An outbound message held in the durable queue because the gateway was
+/// unreachable. Shows the message text plus its queue state; a failed send
+/// surfaces its error with a retry button.
+/// </summary>
+public sealed partial class QueuedMessageItem : TranscriptItem
+{
+    private readonly Func<QueuedMessage, Task> _retry;
+
+    public QueuedMessageItem(QueuedMessage message, Func<QueuedMessage, Task> retry)
+    {
+        Message = message;
+        _retry = retry;
+    }
+
+    public QueuedMessage Message { get; }
+
+    public string Text => Message.Text;
+
+    [ObservableProperty]
+    public partial string Status { get; set; } = "Queued — will send on reconnect.";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyCanExecuteChangedFor(nameof(RetryCommand))]
+    public partial string? Error { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RetryCommand))]
+    public partial bool IsRetrying { get; set; }
+
+    public bool HasError => Error is not null;
+
+    private bool CanRetry() => !IsRetrying && Error is not null;
+
+    [RelayCommand(CanExecute = nameof(CanRetry))]
+    public async Task RetryAsync()
+    {
+        if (IsRetrying)
+        {
+            return;
+        }
+
+        IsRetrying = true;
+        Error = null;
+        Status = "Sending…";
+        try
+        {
+            await _retry(Message);
+        }
+        finally
+        {
+            IsRetrying = false;
+        }
+    }
+}
+
+/// <summary>
 /// Dangerous-command approval card. Resolves via POST /v1/runs/{run_id}/approval,
 /// keyed by run_id from the SSE envelope. Only the server-advertised choices render.
 /// </summary>
