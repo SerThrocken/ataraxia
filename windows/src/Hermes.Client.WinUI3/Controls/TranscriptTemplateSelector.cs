@@ -11,6 +11,7 @@ public sealed class TranscriptTemplateSelector : DataTemplateSelector
     public DataTemplate? ApprovalTemplate { get; set; }
     public DataTemplate? ToolTemplate { get; set; }
     public DataTemplate? QueuedTemplate { get; set; }
+    public DataTemplate? DiffTemplate { get; set; }
 
     protected override DataTemplate? SelectTemplateCore(object item) => item switch
     {
@@ -19,6 +20,7 @@ public sealed class TranscriptTemplateSelector : DataTemplateSelector
         ApprovalItem => ApprovalTemplate,
         ToolMessageItem => ToolTemplate,
         QueuedMessageItem => QueuedTemplate,
+        DiffItem => DiffTemplate,
         _ => base.SelectTemplateCore(item),
     };
 }
