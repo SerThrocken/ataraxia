@@ -11,6 +11,14 @@
     <UserControl.Resources>
         <controls:DiffLineKindToBrushConverter x:Key="DiffKindToBrush" />
         <controls:DiffLineKindToSignConverter x:Key="DiffLineKindToSign" />
+
+        <DataTemplate x:Key="DiffLineTemplate" x:DataType="core:DiffLine">
+            <TextBlock FontFamily="Consolas" TextWrapping="Wrap"
+                       Foreground="{x:Bind Kind, Converter={StaticResource DiffKindToBrush}}"
+                       AutomationProperties.Name="{x:Bind Text}">
+                <Run Text="{x:Bind Kind, Converter={StaticResource DiffLineKindToSign}}" /><Run Text="{x:Bind Text}" />
+            </TextBlock>
+        </DataTemplate>
     </UserControl.Resources>
 
     <StackPanel Spacing="8">
@@ -21,6 +29,7 @@
                    Visibility="Collapsed"
                    AutomationProperties.Name="No diff available" />
 
+        <!-- Read-only rendering (transcript). -->
         <ItemsControl x:Name="FilesList">
             <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="core:DiffFile">
@@ -37,17 +46,8 @@
                                         <TextBlock Text="{x:Bind Header}" FontFamily="Consolas"
                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                    AutomationProperties.Name="{x:Bind Header}" />
-                                        <ItemsControl ItemsSource="{x:Bind Lines}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="core:DiffLine">
-                                                    <TextBlock FontFamily="Consolas" TextWrapping="Wrap"
-                                                               Foreground="{x:Bind Kind, Converter={StaticResource DiffKindToBrush}}"
-                                                               AutomationProperties.Name="{x:Bind Text}">
-                                                        <Run Text="{x:Bind Kind, Converter={StaticResource DiffLineKindToSign}}" /><Run Text="{x:Bind Text}" />
-                                                    </TextBlock>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                        <ItemsControl ItemsSource="{x:Bind Lines}"
+                                                      ItemTemplate="{StaticResource DiffLineTemplate}" />
                                     </StackPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -56,5 +56,85 @@
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
+
+        <!-- Review mode: per-hunk accept/reject + patch export. -->
+        <StackPanel x:Name="ReviewPanel" Spacing="8" Visibility="Collapsed">
+            <ItemsControl x:Name="ReviewFilesList">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="controls:HunkReviewFile">
+                        <Expander IsExpanded="True" HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Stretch" Margin="0,0,0,8">
+                            <Expander.Header>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{x:Bind DisplayPath}"
+                                               FontFamily="Consolas" VerticalAlignment="Center"
+                                               AutomationProperties.Name="{x:Bind DisplayPath}" />
+                                    <Button Grid.Column="1" Content="Accept all"
+                                            Command="{x:Bind AcceptAllCommand}"
+                                            AutomationProperties.Name="{x:Bind AcceptAllName}" />
+                                    <Button Grid.Column="2" Content="Reject all"
+                                            Command="{x:Bind RejectAllCommand}"
+                                            AutomationProperties.Name="{x:Bind RejectAllName}" />
+                                </Grid>
+                            </Expander.Header>
+                            <ItemsControl ItemsSource="{x:Bind Hunks}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="controls:HunkRow">
+                                        <StackPanel Spacing="4" Margin="0,0,0,12">
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{x:Bind Hunk.Header}"
+                                                           FontFamily="Consolas" VerticalAlignment="Center"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           AutomationProperties.Name="{x:Bind Hunk.Header}" />
+                                                <TextBlock Grid.Column="1" Text="{x:Bind StateText, Mode=OneWay}"
+                                                           VerticalAlignment="Center"
+                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           AutomationProperties.Name="{x:Bind StateName, Mode=OneWay}" />
+                                                <Button Grid.Column="2" Content="Accept"
+                                                        Command="{x:Bind AcceptCommand}"
+                                                        AutomationProperties.Name="{x:Bind AcceptName}" />
+                                                <Button Grid.Column="3" Content="Reject"
+                                                        Command="{x:Bind RejectCommand}"
+                                                        AutomationProperties.Name="{x:Bind RejectName}" />
+                                            </Grid>
+                                            <ItemsControl ItemsSource="{x:Bind Hunk.Lines}"
+                                                          ItemTemplate="{StaticResource DiffLineTemplate}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Expander>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock x:Name="ReviewCounts"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       AutomationProperties.Name="Review counts" />
+
+            <Button x:Name="ExportButton" Content="Export accepted hunks (.patch)"
+                    Click="OnExportClick" IsEnabled="False"
+                    AutomationProperties.Name="Export accepted hunks as a patch file" />
+
+            <TextBlock TextWrapping="Wrap"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       AutomationProperties.Name="Why export only">
+                <Run Text="The gateway (0.21.6) has no file-apply route, so nothing here writes to the agent's files. " /><Run Text="Accept/reject records your review — export the accepted hunks as a .patch and apply it yourself." />
+            </TextBlock>
+        </StackPanel>
     </StackPanel>
 </UserControl>
