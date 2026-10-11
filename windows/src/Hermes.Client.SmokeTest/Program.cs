@@ -19,6 +19,36 @@ static bool VersionAtLeast(string? version, int major, int minor, int patch)
     return v >= new Version(major, minor, patch);
 }
 
+if (args.Contains("--camera-probe"))
+{
+    // Camera-to-agent verification: capture one still frame from the device
+    // camera and prove it is a real JPEG that survives the ChatImageAttachment
+    // the send path uses. Runs headless on the Acer; the camera is released
+    // as soon as the capture completes.
+    var camera = new Hermes.Client.WinUI3.Services.MediaCaptureCameraService();
+    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+    try
+    {
+        var photo = await camera.CapturePhotoAsync(cts.Token);
+        Check(photo.JpegData.Length > 1024, $"captured {photo.JpegData.Length} bytes from camera");
+        Check(photo.JpegData[0] == 0xFF && photo.JpegData[1] == 0xD8, "JPEG magic bytes (FFD8)");
+        Check(photo.JpegData[^2] == 0xFF && photo.JpegData[^1] == 0xD9, "JPEG end marker (FFD9)");
+        var attachment = new ChatImageAttachment(photo.JpegData, "image/jpeg");
+        Check(attachment.ToDataUrl().StartsWith("data:image/jpeg;base64,", StringComparison.Ordinal),
+            "data URL shape for the gateway image_url part");
+        var path = Path.Combine(Path.GetTempPath(), "ataraxia-camera-probe.jpg");
+        await File.WriteAllBytesAsync(path, photo.JpegData);
+        Console.WriteLine($"probe frame saved to {path}");
+    }
+    catch (Exception ex)
+    {
+        Check(false, $"camera capture threw: {ex.GetType().Name}: {ex.Message}");
+    }
+
+    Console.WriteLine(failures.Count == 0 ? "CAMERA PROBE OK" : $"CAMERA PROBE FAILED ({failures.Count})");
+    return failures.Count == 0 ? 0 : 1;
+}
+
 var apiKey = ReadApiServerKey();
 Check(!string.IsNullOrEmpty(apiKey), "API_SERVER_KEY present in gateway .env (memory only, never printed)");
 Check(ConnectionValidation.IsValidApiKey(apiKey), "stored key passes client-side validation (>=16 chars)");
@@ -478,9 +508,12 @@ sealed class PaletteFakeGateway : IGatewayClient
     public Task<IReadOnlyList<ChatMessage>> GetMessagesAsync(string sessionId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     public Task<ChatMessage> SendChatAsync(string sessionId, string content, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     public IAsyncEnumerable<SseEvent> StreamChatEventsAsync(string sessionId, string message, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    public IAsyncEnumerable<SseEvent> StreamChatEventsWithImageAsync(string sessionId, string text, ChatImageAttachment image, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    public Task<ChatMessage> SendChatWithImageAsync(string sessionId, string text, ChatImageAttachment image, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     public IAsyncEnumerable<string> StreamChatAsync(string sessionId, string content, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     public Task<ApprovalResolution> ResolveApprovalAsync(string runId, string choice, string? requestId = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     public Task<ArtifactDownload> DownloadArtifactAsync(string artifactId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    public Task<ArtifactDownload> DownloadArtifactWithProgressAsync(string artifactId, IProgress<ArtifactDownloadProgress>? progress, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     public Task<IReadOnlyList<ToolsetInfo>> GetToolsetsAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
     public Task<RunCreateResponse> CreateRunAsync(string input, string? sessionId = null, string? model = null, string? idempotencyKey = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     public Task<RunStatus> GetRunAsync(string runId, CancellationToken cancellationToken = default) => throw new NotImplementedException();

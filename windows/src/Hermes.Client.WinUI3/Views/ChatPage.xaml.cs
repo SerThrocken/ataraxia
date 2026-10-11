@@ -65,4 +65,16 @@ public sealed partial class ChatPage : Page
             }
         }
     }
+
+    private async void OnReviewDiffClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not DiffItem item)
+        {
+            return;
+        }
+
+        var dialog = new Controls.FileReviewDialog { XamlRoot = XamlRoot };
+        dialog.ShowFor(item.ToolCallId, item.DiffSource);
+        await dialog.ShowAsync();
+    }
 }

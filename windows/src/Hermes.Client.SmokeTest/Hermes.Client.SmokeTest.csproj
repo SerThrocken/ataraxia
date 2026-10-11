@@ -14,6 +14,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Hermes.Client.Core\Hermes.Client.Core.csproj" />
     <ProjectReference Include="..\Hermes.Client.Infrastructure\Hermes.Client.Infrastructure.csproj" />
+    <!-- Camera probe: exercises the WinUI3 capture service headless. The
+         service file is WinRT-only (no XAML), so it compiles here too. -->
+    <Compile Include="..\Hermes.Client.WinUI3\Services\CameraCaptureService.cs" Link="CameraCaptureService.cs" />
   </ItemGroup>
 
 </Project>

@@ -36,6 +36,13 @@ public partial class App : Application
         services.AddSingleton<IOutboundMessageQueue, FileOutboundMessageQueue>();
         services.AddSingleton<OutboundQueueFlusher>();
 
+        // Camera-to-agent (WinRT MediaCapture, no new dependency) and the
+        // UI-agnostic taskbar-progress tracker both live as singletons: the
+        // camera service holds no state between captures, and progress from
+        // any page funnels into one taskbar bar.
+        services.AddSingleton<ICameraCaptureService, MediaCaptureCameraService>();
+        services.AddSingleton<TaskbarProgressTracker>();
+
         // Shared gateway client (chat worker): concrete GatewayClient over the
         // shared GatewayClientBase — no HTTP/auth duplication. The connection
         // flow owns the key/URL UX; the client is pointed at the saved values

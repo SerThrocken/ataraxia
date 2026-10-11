@@ -1,4 +1,5 @@
 using Hermes.Client.Core;
+using Hermes.Client.WinUI3.Services;
 using Hermes.Client.WinUI3.ViewModels;
 using Hermes.Client.WinUI3.Views;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +20,7 @@ public sealed partial class MainWindow : Window, ICommandPaletteHost
     private static MainWindow? _current;
     private readonly IConnectionState _connectionState = App.Services.GetRequiredService<IConnectionState>();
     private readonly IGatewayClient _gatewayClient = App.Services.GetRequiredService<IGatewayClient>();
+    private readonly TaskbarProgressController _taskbarProgress;
     private IReadOnlyList<SkillInfo>? _skillCache;
     private object? _previouslyFocused;
     private ConnectionState _lastIndicatorState = ConnectionState.Untested;
@@ -68,6 +70,15 @@ public sealed partial class MainWindow : Window, ICommandPaletteHost
 
         InitializeComponent();
         _current = this;
+
+        // Taskbar progress for long operations (queue flushes, artifact
+        // downloads): the tracker is UI-agnostic; this controller drives
+        // ITaskbarList3 from the AppWindow handle. Disposed with the window.
+        _taskbarProgress = new TaskbarProgressController(
+            WindowNative.GetWindowHandle(this),
+            App.Services.GetRequiredService<TaskbarProgressTracker>(),
+            DispatcherQueue);
+        Closed += (_, _) => _taskbarProgress.Dispose();
 
         // Window-chrome icon (unpackaged apps get no manifest icon).
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "ataraxia.ico");
