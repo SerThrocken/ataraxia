@@ -1,0 +1,81 @@
+<Page
+    x:Class="Hermes.Client.WinUI3.Views.MessagingPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:core="using:Hermes.Client.Core"
+    xmlns:controls="using:Hermes.Client.WinUI3.Controls"
+    mc:Ignorable="d"
+    AutomationProperties.Name="Messaging platforms">
+
+    <Page.Resources>
+        <controls:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+    </Page.Resources>
+
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <TextBlock Text="Messaging"
+                       Style="{StaticResource TitleTextBlockStyle}"
+                       AutomationProperties.Name="Messaging page heading" />
+            <Button Content="Refresh"
+                    Command="{x:Bind ViewModel.RefreshCommand}"
+                    AutomationProperties.Name="Refresh platform status"
+                    ToolTipService.ToolTip="Reload platform status from GET /health/detailed" />
+            <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                          Width="20" Height="20"
+                          AutomationProperties.Name="Loading platform status" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Spacing="8">
+            <InfoBar Severity="Informational"
+                     IsOpen="True"
+                     IsClosable="False"
+                     Message="{x:Bind ViewModel.Notice}"
+                     AutomationProperties.Name="Messaging notice" />
+            <TextBlock Text="{x:Bind ViewModel.Headline, Mode=OneWay}"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       AutomationProperties.Name="Platform headline" />
+            <TextBlock Text="{x:Bind ViewModel.Error, Mode=OneWay}"
+                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                       Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="Messaging error" />
+        </StackPanel>
+
+        <ListView Grid.Row="2"
+                  ItemsSource="{x:Bind ViewModel.PlatformRows, Mode=OneWay}"
+                  SelectionMode="None"
+                  AutomationProperties.Name="Platform status table">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="core:PlatformStatusRow">
+                    <StackPanel Padding="4,8" Spacing="2">
+                        <TextBlock Text="{x:Bind Name}"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Text="{x:Bind State}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{x:Bind Detail}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <TextBlock Grid.Row="3"
+                   Text="{x:Bind ViewModel.Detail}"
+                   Style="{StaticResource BodyTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   AutomationProperties.Name="Messaging detail" />
+    </Grid>
+</Page>
