@@ -6,7 +6,9 @@
 
     <application
         android:name=".HermesApp"
-        android:label="Hermes"
+        android:label="Ataraxia"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.Hermes"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true">
