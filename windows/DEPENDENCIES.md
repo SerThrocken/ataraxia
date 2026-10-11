@@ -1,0 +1,39 @@
+# Dependencies — license gate record
+
+Verified 2026-10-11. Allowed: MIT / Apache-2.0 / BSD / ISC.
+License evidence: the `.nuspec` of the exact version resolved by the
+Release build on the build machine (Acer, `C:\Users\tlcro\.nuget\packages\`),
+plus the nuget.org package page where noted.
+
+| Package | Version | License | Evidence |
+|---|---|---|---|
+| `CommunityToolkit.Mvvm` | 8.4.2 | **MIT** | `.nuspec`: `<license type="expression">MIT</license>`; https://www.nuget.org/packages/CommunityToolkit.Mvvm |
+| `Markdig` | 1.4.0 | **BSD-2-Clause** | `.nuspec` on build machine (`C:\Users\tlcro\.nuget\packages\markdig\1.4.0\markdig.nuspec`): `<license type="expression">BSD-2-Clause</license>`; https://www.nuget.org/packages/Markdig. Used by `Hermes.Client.Core` for Markdown parsing (chat transcript rendering). |
+| `Microsoft.Extensions.DependencyInjection` | 10.0.12 | **MIT** | `.nuspec`: `<license type="expression">MIT</license>`; nuget.org README states "released as open source under the MIT license": https://www.nuget.org/packages/Microsoft.Extensions.DependencyInjection |
+| `Microsoft.WindowsAppSDK` | 2.5.1 | **Microsoft Software License Terms (proprietary) — override approved by Thomas 2026-10-11** (see GOAL.md "License override") | Not copyleft, claims nothing over app code, no royalties; WinUI 3 cannot exist without it; alternatives (WPF dated, Avalonia not truly native, raw Win32 impractical) all worse. Override is explicit and on record. |
+| `System.Security.Cryptography.ProtectedData` | 10.0.0 | **MIT** | `.nuspec`: `<license type="expression">MIT</license>` (dotnet/runtime); https://www.nuget.org/packages/System.Security.Cryptography.ProtectedData |
+
+## Test-only (never ship in the app)
+
+| Package | Version | License | Evidence |
+|---|---|---|---|
+| `xunit` | 2.9.3 | **Apache-2.0** | `.nuspec` on build machine: `<license type="expression">Apache-2.0</license>` |
+| `xunit.runner.visualstudio` | 4.0.1 | **Apache-2.0** | `.nuspec` on build machine: `<license type="expression">Apache-2.0</license>` |
+| `Microsoft.NET.Test.Sdk` | 18.10.1 | **MIT** | `.nuspec` on build machine: `<license type="expression">MIT</license>` |
+
+## Deferred
+
+- `CommunityToolkit.WinUI.Controls` (named in the task): the package ID
+  `CommunityToolkit.WinUI.Controls` returns **404 at nuget.org** — it does not
+  exist as an aggregate package (only per-component packages such as
+  `CommunityToolkit.WinUI.Controls.Primitives` exist, in the
+  `CommunityToolkit.WinUI.Controls.*` namespace). Per the license gate it was
+  **not added unverified**. The scaffold uses only stock WinUI 3 controls.
+  If a specific component package is needed later, verify its ID and license
+  at nuget.org first, then add it here.
+
+## Notes
+
+- No OpenAI products anywhere in the tree.
+- All code is clean-room original; reference repos (harness.winui, DevToys,
+  PowerToys) were ideas/patterns only.

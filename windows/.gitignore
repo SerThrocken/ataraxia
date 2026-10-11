@@ -1,0 +1,33 @@
+# Build outputs
+bin/
+obj/
+out/
+publish/
+
+# Visual Studio / VS Code
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vscode/
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# MSIX / packaging artifacts
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+*.cer
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test results
+TestResults/
