@@ -206,4 +206,26 @@ public sealed class GatewayClientCronJobsTests
         var ex = await Assert.ThrowsAsync<GatewayApiException>(() => client.GetCronJobAsync("abc123def456"));
         Assert.Equal(404, ex.StatusCode);
     }
+
+    [Fact]
+    public async Task RunCronJobAsync_ThrowsNotFoundForUnknownJob()
+    {
+        // Regression guard (2026-10-11): the live gateway answers 404 here
+        // only for an unknown job id — the /run route itself always exists
+        // (verified against api_server.py _http_route_table + _job_response).
+        // A 404 must surface as GatewayApiException(404), never be mistaken
+        // for a missing endpoint.
+        var requested = new List<string>();
+        var client = ClientFor(req =>
+        {
+            requested.Add(req.Method + " " + req.RequestUri!.PathAndQuery);
+            return Json("""{"error": "Job not found"}""", HttpStatusCode.NotFound);
+        });
+
+        var ex = await Assert.ThrowsAsync<GatewayApiException>(
+            () => client.RunCronJobAsync("nope-not-a-real-id"));
+
+        Assert.Equal(404, ex.StatusCode);
+        Assert.Equal("POST /api/jobs/nope-not-a-real-id/run", Assert.Single(requested));
+    }
 }

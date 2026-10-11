@@ -83,7 +83,9 @@ public sealed partial class GatewayClient
 
     /// <summary>
     /// POST /api/jobs/{job_id}/run — triggers immediate execution of the job.
-    /// The optional <paramref name="extraPrompt"/> rides in the body.
+    /// The optional <paramref name="extraPrompt"/> rides in the body as
+    /// <c>{"prompt": ...}</c>. The gateway answers 404 only for an unknown
+    /// job id (the route itself always exists); 400 for a malformed id.
     /// </summary>
     public override Task<CronJob> RunCronJobAsync(string jobId, string? extraPrompt = null, CancellationToken cancellationToken = default) =>
         PostCronJobActionAsync(jobId, "run", extraPrompt is null ? null : new { prompt = extraPrompt }, cancellationToken);
