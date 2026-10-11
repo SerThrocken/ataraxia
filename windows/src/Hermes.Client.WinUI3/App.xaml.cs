@@ -116,6 +116,11 @@ public partial class App : Application
         _window = new MainWindow();
         _window.Activate();
 
+        // ataraxia:// deep links (PowerToys Run plugin, scripts): register the
+        // protocol, then honor a protocol activation if this launch was one.
+        Services.DeepLinkService.EnsureProtocolRegistered();
+        Services.DeepLinkService.HandleLaunchActivation(_window);
+
         // Toast activation: approve/deny hit POST /v1/runs/{id}/approval,
         // then every toast deep-links back to the run in Mission Control.
         Services.GetRequiredService<Services.RunToastService>().EnsureRegistered();
