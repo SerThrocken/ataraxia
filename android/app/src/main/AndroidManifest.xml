@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:name=".HermesApp"
+        android:label="Hermes"
+        android:theme="@style/Theme.Hermes"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true">
+
+        <!-- Cleartext is intentional: the Hermes gateway lives on the local
+             LAN / Tailscale mesh (SCOPE.md: CLI gateway, port 8642) where TLS
+             termination is not deployed. Revisit if a public endpoint ships. -->
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
