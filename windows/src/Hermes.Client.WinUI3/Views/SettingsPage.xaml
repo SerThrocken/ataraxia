@@ -1,0 +1,52 @@
+<Page
+    x:Class="Hermes.Client.WinUI3.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer>
+        <StackPanel Padding="24" Spacing="12" MaxWidth="640" HorizontalAlignment="Left">
+            <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
+
+            <TextBlock Text="Connection" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock Text="{x:Bind ViewModel.ConnectionStateText, Mode=OneWay}"
+                       Style="{StaticResource BodyStrongTextBlockStyle}" />
+
+            <TextBox Header="Gateway URL"
+                     Text="{x:Bind ViewModel.BaseUrl, Mode=TwoWay}" />
+            <Button Content="Use loopback (this machine instead)"
+                    Command="{x:Bind ViewModel.UseLoopbackCommand}"
+                    Style="{StaticResource TextButtonStyle}"
+                    HorizontalAlignment="Left" />
+
+            <PasswordBox Header="API key"
+                         Password="{x:Bind ViewModel.ApiKey, Mode=TwoWay}" />
+            <TextBlock Text="{x:Bind ViewModel.KeyStatusText, Mode=OneWay}"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock Text="Stored with Windows DPAPI — never in plain text, never in settings files."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Test connection"
+                        Command="{x:Bind ViewModel.TestConnectionCommand}" />
+                <Button Content="Save"
+                        Command="{x:Bind ViewModel.SaveCommand}" />
+            </StackPanel>
+            <TextBlock Text="{x:Bind ViewModel.TestResult, Mode=OneWay}"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{x:Bind ViewModel.CapabilitySummary, Mode=OneWay}"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>
