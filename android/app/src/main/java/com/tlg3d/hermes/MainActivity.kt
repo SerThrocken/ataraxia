@@ -7,7 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import com.tlg3d.hermes.ui.HermesNav
-import com.tlg3d.hermes.ui.theme.HermesTheme
+import com.tlg3d.hermes.ui.theme.AtaraxiaTheme
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 class MainActivity : ComponentActivity() {
@@ -15,7 +15,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            HermesTheme {
+            AtaraxiaTheme {
                 HermesNav(windowSizeClass = calculateWindowSizeClass(this))
             }
         }

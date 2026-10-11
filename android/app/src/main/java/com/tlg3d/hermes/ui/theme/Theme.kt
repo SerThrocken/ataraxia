@@ -103,7 +103,7 @@ private val LightColors = lightColorScheme(
  * primary design target (late-night ops on the Acer).
  */
 @Composable
-fun HermesTheme(content: @Composable () -> Unit) {
+fun AtaraxiaTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
         content = content,
