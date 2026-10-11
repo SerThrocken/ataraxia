@@ -14,6 +14,7 @@ in Phase 1 once `api-contract.md` pins the response shapes.
 | `Hermes.Client.Core` | net10.0 | Protocol abstractions: `IGatewayClient`, DTO records, `GatewayOptions`. No UI. |
 | `Hermes.Client.Infrastructure` | net10.0 | `ISecretStore` (DPAPI stub), JSON settings service. |
 | `Hermes.Client.WinUI3` | net10.0-windows10.0.26100.0 | Unpackaged WinUI 3 app: NavigationView shell, custom title bar, Mica, placeholder pages (Chat, Sessions, Models, Skills, Settings). |
+| `Ataraxia.PowerToysRun` | net9.0-windows | PowerToys Run plugin (keyword `ax`): recent/session search, quick-send to a new session, `ataraxia://` deep links. **Outside the solution** — see `src/Ataraxia.PowerToysRun/README.md`. |
 
 ## Prerequisites
 
@@ -42,6 +43,22 @@ Single-file publish (Phase 3 goal):
 
 ```powershell
 dotnet publish src\Hermes.Client.WinUI3\Hermes.Client.WinUI3.csproj -c Release -p:PublishSingleFile=true
+```
+
+## PowerToys Run plugin
+
+`src/Ataraxia.PowerToysRun/` is a PowerToys Run plugin (keyword `ax`) that
+lives **outside this solution** — PowerToys loads plugins from its own
+plugins folder. It references `Hermes.Client.Core`/`Infrastructure`
+(net9.0 builds) for the gateway client and the shared DPAPI secret store,
+so the API key is never duplicated. Session results deep-link into the app
+via the `ataraxia://session/{id}` protocol, which the WinUI3 app registers
+per-user at launch (`Services/DeepLinkService`). Full install/usage notes:
+[src/Ataraxia.PowerToysRun/README.md](src/Ataraxia.PowerToysRun/README.md).
+
+```powershell
+dotnet build src\Ataraxia.PowerToysRun\Ataraxia.PowerToysRun.csproj -c Release -p:Platform=x64
+dotnet test src\Ataraxia.PowerToysRun.Tests -p:Platform=x64
 ```
 
 ## Dependencies

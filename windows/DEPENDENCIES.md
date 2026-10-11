@@ -12,6 +12,7 @@ plus the nuget.org package page where noted.
 | `Microsoft.Extensions.DependencyInjection` | 10.0.12 | **MIT** | `.nuspec`: `<license type="expression">MIT</license>`; nuget.org README states "released as open source under the MIT license": https://www.nuget.org/packages/Microsoft.Extensions.DependencyInjection |
 | `Microsoft.WindowsAppSDK` | 2.5.1 | **Microsoft Software License Terms (proprietary) — override approved by Thomas 2026-10-11** (see GOAL.md "License override") | Not copyleft, claims nothing over app code, no royalties; WinUI 3 cannot exist without it; alternatives (WPF dated, Avalonia not truly native, raw Win32 impractical) all worse. Override is explicit and on record. |
 | `System.Security.Cryptography.ProtectedData` | 10.0.0 | **MIT** | `.nuspec`: `<license type="expression">MIT</license>` (dotnet/runtime); https://www.nuget.org/packages/System.Security.Cryptography.ProtectedData |
+| `Community.PowerToys.Run.Plugin.Dependencies` | 0.97.0 | **MIT** | `.nuspec` from nuget.org (downloaded 2026-10-11): `<license type="expression">MIT</license>`; package README states the five DLLs (`Wox.Plugin`, `Wox.Infrastructure`, `PowerToys.Common.UI`, `PowerToys.ManagedCommon`, `PowerToys.Settings.UI.Lib`) are built from microsoft/PowerToys source, which is MIT (github.com/microsoft/PowerToys LICENSE). **Compile-time reference only**: PowerToys loads its own copies at runtime; none of the five DLLs are redistributed with the plugin. Used by `Ataraxia.PowerToysRun` (the PowerToys Run plugin, `net9.0-windows`). |
 
 ## Test-only (never ship in the app)
 
