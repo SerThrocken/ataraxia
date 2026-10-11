@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Windows-only by nature: DPAPI (ProtectedData) has no cross-platform equivalent. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <RootNamespace>Hermes.Client.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hermes.Client.Core\Hermes.Client.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- MIT (dotnet/runtime). Provides ProtectedData for DPAPI. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>
