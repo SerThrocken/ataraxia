@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- PowerToys Run hosts plugins in-process. Verified 2026-10-11 on the
+         target machine: PowerToys 0.101.2362.0 runs on .NET 10
+         (PowerToys.PowerLauncher.runtimeconfig.json -> 10.0.11), and the only
+         published plugin-API DLLs target net9.0 (CS1705 makes net8.0
+         impossible). net9.0 loads on both .NET 9 and .NET 10 hosts; net10 is
+         forbidden for plugins (a future host-only runtime the plugin can't
+         assume). The .NET 10 SDK downloads the net9.0 targeting pack. -->
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Platforms>x64;ARM64</Platforms>
+    <PlatformTarget>$(Platform)</PlatformTarget>
+    <!-- Matches the community package's example csproj: the PowerToys
+         reference DLLs were built against the real WindowsDesktop assemblies
+         (WindowsBase 9.0.0.0). Without this, the net9.0 targeting-pack facade
+         (WindowsBase 4.0.0.0) conflicts with them -> MSB3277. -->
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Ataraxia.PowerToysRun</RootNamespace>
+    <AssemblyName>Ataraxia.PowerToysRun</AssemblyName>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MIT (verified in the resolved .nuspec, 2026-10-11). Compile-time only:
+         the five PowerToys DLLs are NOT redistributed; the host supplies them.
+         Keep the version paired with the installed PowerToys release. -->
+    <PackageReference Include="Community.PowerToys.Run.Plugin.Dependencies" Version="0.97.0" />
+    <!-- Reuse the shared gateway client + DPAPI secret store (no duplication). -->
+    <ProjectReference Include="..\Hermes.Client.Core\Hermes.Client.Core.csproj" />
+    <ProjectReference Include="..\Hermes.Client.Infrastructure\Hermes.Client.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Images\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
