@@ -28,6 +28,21 @@ public partial interface IGatewayClient : IAsyncDisposable
     /// </summary>
     IAsyncEnumerable<SseEvent> StreamChatEventsAsync(string sessionId, string message, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Same as <see cref="StreamChatEventsAsync"/> but the turn carries a photo:
+    /// the request body becomes the OpenAI-style parts array
+    /// (<c>text</c> + <c>image_url</c> with a <c>data:image/...;base64,...</c> URL),
+    /// which the gateway's <c>_normalize_multimodal_content</c> accepts.
+    /// </summary>
+    IAsyncEnumerable<SseEvent> StreamChatEventsWithImageAsync(
+        string sessionId, string text, ChatImageAttachment image, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Non-streaming chat turn with a photo (used by the offline-queue flusher).
+    /// </summary>
+    Task<ChatMessage> SendChatWithImageAsync(
+        string sessionId, string text, ChatImageAttachment image, CancellationToken cancellationToken = default);
+
     // Legacy raw-delta stream (kept for compatibility).
     IAsyncEnumerable<string> StreamChatAsync(string sessionId, string content, CancellationToken cancellationToken = default);
 
@@ -39,6 +54,15 @@ public partial interface IGatewayClient : IAsyncDisposable
 
     // GET /v1/artifacts/download/{artifact_id} (one-shot)
     Task<ArtifactDownload> DownloadArtifactAsync(string artifactId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Same download but streams the body and reports byte progress
+    /// (<see cref="ArtifactDownloadProgress"/>); <c>TotalBytes</c> is null when
+    /// the gateway omits Content-Length, in which case callers stay
+    /// indeterminate. Backs the taskbar progress for artifact downloads.
+    /// </summary>
+    Task<ArtifactDownload> DownloadArtifactWithProgressAsync(
+        string artifactId, IProgress<ArtifactDownloadProgress>? progress, CancellationToken cancellationToken = default);
 
     // GET /v1/models
     Task<IReadOnlyList<ModelInfo>> GetModelsAsync(CancellationToken cancellationToken = default);
