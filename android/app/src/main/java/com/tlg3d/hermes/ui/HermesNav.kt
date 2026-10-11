@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Settings
@@ -28,9 +28,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.navArgument
 import androidx.navigation.compose.rememberNavController
 import com.tlg3d.hermes.ui.screens.ChatScreen
 import com.tlg3d.hermes.ui.screens.ModelsScreen
@@ -43,7 +45,7 @@ private enum class Destination(
     val label: String,
     val icon: ImageVector,
 ) {
-    Chat("chat", "Chat", Icons.Filled.Chat),
+    Chat("chat", "Chat", Icons.AutoMirrored.Filled.Chat),
     Sessions("sessions", "Sessions", Icons.Filled.Forum),
     Models("models", "Models", Icons.Filled.SmartToy),
     Skills("skills", "Skills", Icons.Filled.Memory),
@@ -76,8 +78,27 @@ fun HermesNav(windowSizeClass: WindowSizeClass) {
             startDestination = Destination.Chat.route,
             modifier = modifier,
         ) {
-            composable(Destination.Chat.route) { ChatScreen() }
-            composable(Destination.Sessions.route) { SessionsScreen() }
+            composable(
+                route = "${Destination.Chat.route}?sessionId={sessionId}",
+                arguments = listOf(
+                    navArgument("sessionId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                ChatScreen(initialSessionId = entry.arguments?.getString("sessionId"))
+            }
+            composable(Destination.Sessions.route) {
+                SessionsScreen(onOpenSession = { id ->
+                    navController.navigate("${Destination.Chat.route}?sessionId=$id") {
+                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                })
+            }
             composable(Destination.Models.route) { ModelsScreen() }
             composable(Destination.Skills.route) { SkillsScreen() }
             composable(Destination.Settings.route) { SettingsScreen() }

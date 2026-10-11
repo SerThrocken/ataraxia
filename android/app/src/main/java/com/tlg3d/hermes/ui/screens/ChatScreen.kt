@@ -57,7 +57,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tlg3d.hermes.HermesApp
 import com.tlg3d.hermes.network.ApprovalRequest
 import com.tlg3d.hermes.network.GatewayClient
-import com.tlg3d.hermes.network.GatewayException
 import com.tlg3d.hermes.network.Session
 import com.tlg3d.hermes.network.StreamEvent
 import kotlinx.coroutines.CancellationException
@@ -98,6 +97,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     var reasoningExpanded by mutableStateOf(false)
     var needsKey by mutableStateOf(false)
         private set
+    var defaultModel by mutableStateOf<String?>(null)
+        private set
+
+    private val prefs get() = hermesApp.gatewayPrefs
+    private var preselectedId: String? = null
+    private var messagesFor: String? = null
 
     private var streamJob: Job? = null
 
@@ -108,6 +113,28 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         client = c
+        refreshDefaultModel()
+        preselectedId?.let {
+            selectedSessionId = it
+            preselectedId = null
+        }
+        refreshSessions()
+    }
+
+    /** Re-read the saved default model (it may have changed on the Models tab). */
+    fun refreshDefaultModel() {
+        defaultModel = prefs.defaultModel
+    }
+
+    /** Open a specific session, connecting first when the client isn't ready. */
+    fun openSession(id: String) {
+        if (client == null) {
+            preselectedId = id
+            connect()
+            return
+        }
+        if (id == selectedSessionId && id == messagesFor) return
+        selectedSessionId = id
         refreshSessions()
     }
 
@@ -120,11 +147,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val list = withContext(Dispatchers.IO) { c.listSessions() }
                 sessions.clear()
                 sessions.addAll(list)
-                if (selectedSessionId == null || sessions.none { it.id == selectedSessionId }) {
-                    list.firstOrNull()?.let { selectSession(it.id) }
-                }
+                val target = selectedSessionId?.takeIf { sid -> list.any { it.id == sid } }
+                    ?: list.firstOrNull()?.id
+                if (target != null && target != messagesFor) selectSession(target)
             } catch (e: Exception) {
-                error = describe(e)
+                error = describeGatewayError(e)
             } finally {
                 loading = false
             }
@@ -144,8 +171,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 messages.addAll(history.mapIndexed { i, m ->
                     UiMessage(m.id ?: "m$i", m.role, m.content)
                 })
+                messagesFor = id
             } catch (e: Exception) {
-                error = describe(e)
+                error = describeGatewayError(e)
             } finally {
                 loading = false
             }
@@ -161,7 +189,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 sessions.add(0, s)
                 selectSession(s.id)
             } catch (e: Exception) {
-                error = describe(e)
+                error = describeGatewayError(e)
             } finally {
                 loading = false
             }
@@ -187,7 +215,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     dropPending()
-                    error = describe(e)
+                    error = describeGatewayError(e)
                     streaming = false
                 }
             }
@@ -222,7 +250,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 c.resolveApproval(req.runId, choice, req.requestId)
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { error = describe(e) }
+                withContext(Dispatchers.Main) { error = describeGatewayError(e) }
             }
         }
     }
@@ -258,14 +286,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         messages.removeAll { it.pending }
     }
 
-    private fun describe(e: Exception): String = when (e) {
-        is GatewayException -> e.message ?: "Gateway error."
-        else -> e.message ?: e.javaClass.simpleName
-    }
 }
 
 @Composable
-fun ChatScreen() {
+fun ChatScreen(initialSessionId: String? = null) {
     val app = LocalContext.current.applicationContext as HermesApp
     val vm: ChatViewModel = viewModel(
         factory = object : ViewModelProvider.Factory {
@@ -276,6 +300,10 @@ fun ChatScreen() {
     )
 
     LaunchedEffect(Unit) { vm.connect() }
+    LaunchedEffect(initialSessionId) {
+        vm.refreshDefaultModel()
+        if (initialSessionId != null) vm.openSession(initialSessionId)
+    }
 
     if (vm.needsKey) {
         PlaceholderScreen(
@@ -300,6 +328,7 @@ private fun SessionBar(vm: ChatViewModel) {
     var showPicker by remember { mutableStateOf(false) }
     val current = vm.sessions.firstOrNull { it.id == vm.selectedSessionId }
 
+    Column(Modifier.fillMaxWidth()) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -324,6 +353,17 @@ private fun SessionBar(vm: ChatViewModel) {
         ) {
             Icon(Icons.Filled.Add, contentDescription = null)
         }
+    }
+    val modelLabel = current?.model ?: vm.defaultModel
+    if (modelLabel != null) {
+        Text(
+            "Model: $modelLabel",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
+                .semantics { contentDescription = "Active model $modelLabel" },
+        )
+    }
     }
 
     if (showPicker) {
@@ -499,29 +539,6 @@ private fun ApprovalCard(req: ApprovalRequest, onChoice: (String) -> Unit) {
     }
 }
 
-@Composable
-private fun ErrorBar(message: String, onDismiss: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
-            .semantics { contentDescription = "Error: $message" },
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-        ),
-    ) {
-        Row(
-            Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = onDismiss) { Text("Dismiss") }
-        }
-    }
-}
 
 @Composable
 private fun Composer(vm: ChatViewModel) {
