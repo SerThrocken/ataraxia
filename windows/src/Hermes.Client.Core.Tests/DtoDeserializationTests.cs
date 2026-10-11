@@ -50,6 +50,44 @@ public sealed class DtoDeserializationTests
     }
 
     [Fact]
+    public void SessionDeserializesTokenAndCostFields()
+    {
+        // Field values from the verified contract sample (api-contract.md §4).
+        const string json = """
+            {"object": "hermes.session", "session": {
+              "id": "20260915_064553_415568",
+              "title": "Diagnose restart errors",
+              "message_count": 131,
+              "input_tokens": 15708014,
+              "output_tokens": 462663,
+              "estimated_cost_usd": 5.488759025,
+              "pinned": false,
+              "archived": false
+            }}
+            """;
+
+        var session = JsonSerializer.Deserialize<SessionCreateResponse>(json, Json)!.Session;
+
+        Assert.Equal(15708014, session.InputTokens);
+        Assert.Equal(462663, session.OutputTokens);
+        Assert.Equal(5.488759025, session.EstimatedCostUsd);
+    }
+
+    [Fact]
+    public void SessionDefaultsTokensAndCostWhenAbsent()
+    {
+        const string json = """
+            {"object": "hermes.session", "session": {"id": "s1", "pinned": false, "archived": false}}
+            """;
+
+        var session = JsonSerializer.Deserialize<SessionCreateResponse>(json, Json)!.Session;
+
+        Assert.Equal(0, session.InputTokens);
+        Assert.Equal(0, session.OutputTokens);
+        Assert.Null(session.EstimatedCostUsd);
+    }
+
+    [Fact]
     public void ChatMessageDeserializesStringAndPartsContent()
     {
         const string json = """
