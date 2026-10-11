@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Hermes.Client.Core;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage.Streams;
 
@@ -15,23 +16,66 @@ namespace Hermes.Client.WinUI3.ViewModels;
 /// message_id; tool.progress with tool_name "_thinking" renders as reasoning;
 /// approval.request surfaces an approval card; artifact download links in turn
 /// output are fetched into the artifact pane.
+///
+/// Offline queue: when the gateway is unreachable the message is stored
+/// durably (FileOutboundMessageQueue) instead of being lost. Queued items
+/// show "Queued — will send on reconnect" in the transcript, the queue
+/// indicator shows the pending count, and the queue flushes FIFO on
+/// reconnect via POST /api/sessions/{id}/chat (non-streaming). Queue state
+/// changes are announced to screen readers via AnnounceRequested.
 /// </summary>
 public sealed partial class ChatViewModel : ObservableObject
 {
     private readonly IGatewayClient _client;
+    private readonly UsageMeter _meter;
+    private readonly IOutboundMessageQueue _queue;
+    private readonly OutboundQueueFlusher _flusher;
+    private readonly IConnectionState _connection;
+    private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
     private readonly Dictionary<string, AssistantMessageItem> _liveMessages = new();
+    private readonly Dictionary<string, QueuedMessageItem> _queueItems = new();
     private readonly HashSet<string> _seenArtifacts = new();
     private CancellationTokenSource? _streamCts;
     private string? _sessionId;
+    private int _flushRunning;
 
     // The gateway emits no artifact events; artifact references surface as
     // download URLs in turn text (verified against gateway source, 2026-10-11).
     private static readonly Regex ArtifactLink =
         new(@"/v1/artifacts/download/([A-Za-z0-9_-]+)", RegexOptions.Compiled);
 
-    public ChatViewModel(IGatewayClient client)
+    public ChatViewModel(
+        IGatewayClient client,
+        UsageMeter meter,
+        IOutboundMessageQueue queue,
+        OutboundQueueFlusher flusher,
+        IConnectionState connection)
     {
         _client = client;
+        _meter = meter;
+        _queue = queue;
+        _flusher = flusher;
+        _connection = connection;
+        _flusher.MessageSent += OnFlusherMessageSent;
+        _flusher.MessageFailed += OnFlusherMessageFailed;
+        _connection.StateChanged += OnConnectionStateChanged;
+    }
+
+    /// <summary>
+    /// Raised for screen-reader announcements (queue state changes). The view
+    /// relays these via AutomationPeer notification events.
+    /// </summary>
+    public event EventHandler<string>? AnnounceRequested;
+
+    /// <summary>
+    /// Unsubscribes from the singleton flusher/connection events. Called when
+    /// the view navigates away (this VM is transient; the flusher is not).
+    /// </summary>
+    public void Detach()
+    {
+        _flusher.MessageSent -= OnFlusherMessageSent;
+        _flusher.MessageFailed -= OnFlusherMessageFailed;
+        _connection.StateChanged -= OnConnectionStateChanged;
     }
 
     public ObservableCollection<TranscriptItem> Transcript { get; } = new();
@@ -56,10 +100,21 @@ public sealed partial class ChatViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ArtifactPaneVisible))]
     public partial bool HasArtifacts { get; set; }
 
+    /// <summary>Durably queued outbound messages not yet sent to the gateway.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasQueued))]
+    [NotifyPropertyChangedFor(nameof(QueueStatusText))]
+    public partial int QueuedCount { get; set; }
+
+    public bool HasQueued => QueuedCount > 0;
+
+    public string QueueStatusText => QueuedCount == 1
+        ? "1 message queued — will send on reconnect."
+        : $"{QueuedCount} messages queued — will send on reconnect.";
+
     public bool HasError => Error is not null;
 
     public bool ArtifactPaneVisible => HasArtifacts;
-    public bool HasSession => _sessionId is not null;
 
     private bool CanSend() =>
         !IsStreaming && !string.IsNullOrWhiteSpace(InputText) && _sessionId is not null;
@@ -76,7 +131,22 @@ public sealed partial class ChatViewModel : ObservableObject
         _liveMessages.Clear();
         _seenArtifacts.Clear();
         SendCommand.NotifyCanExecuteChanged();
-        OnPropertyChanged(nameof(HasSession));
+
+        // Seed the usage meter from the session's stored totals; reset per session.
+        _meter.BeginSession(sessionId, 0, 0, null);
+        try
+        {
+            var session = await _client.GetSessionAsync(sessionId);
+            if (session is not null)
+            {
+                _meter.BeginSession(sessionId, session.InputTokens, session.OutputTokens, session.EstimatedCostUsd);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Seeding is best-effort; the chat itself must work without it.
+            System.Diagnostics.Debug.WriteLine($"Usage meter seed failed: {ex.Message}");
+        }
 
         try
         {
@@ -109,6 +179,27 @@ public sealed partial class ChatViewModel : ObservableObject
         {
             Error = FriendlyError(ex);
         }
+
+        // Re-surface anything still waiting in the durable queue (e.g. left
+        // over from before an app restart) for this session.
+        _queueItems.Clear();
+        foreach (var pending in await _queue.GetPendingAsync())
+        {
+            if (pending.SessionId != sessionId)
+            {
+                continue;
+            }
+
+            var item = new QueuedMessageItem(pending, RetryQueuedAsync)
+            {
+                Status = pending.LastError is null ? "Queued — will send on reconnect." : "Send failed.",
+                Error = pending.LastError,
+            };
+            _queueItems[pending.Id] = item;
+            Transcript.Add(item);
+        }
+
+        RefreshQueuedCount();
     }
 
     [RelayCommand(CanExecute = nameof(CanSend))]
@@ -123,11 +214,21 @@ public sealed partial class ChatViewModel : ObservableObject
 
         InputText = "";
         Error = null;
-        Transcript.Add(new UserMessageItem { Text = text });
+
+        if (_connection.State == ConnectionState.Disconnected)
+        {
+            // Known offline: skip the doomed request, queue durably at once.
+            await QueueMessageAsync(sessionId, text);
+            return;
+        }
+
+        var userItem = new UserMessageItem { Text = text };
         var assistant = new AssistantMessageItem();
+        Transcript.Add(userItem);
         Transcript.Add(assistant);
         IsStreaming = true;
         _streamCts = new CancellationTokenSource();
+        var runStarted = false;
 
         try
         {
@@ -135,6 +236,11 @@ public sealed partial class ChatViewModel : ObservableObject
             {
                 using (e)
                 {
+                    if (e.Name is "run.started" or "message.started")
+                    {
+                        runStarted = true;
+                    }
+
                     HandleEvent(e, assistant);
                 }
             }
@@ -142,6 +248,15 @@ public sealed partial class ChatViewModel : ObservableObject
         catch (OperationCanceledException)
         {
             assistant.Status = "Cancelled.";
+        }
+        catch (Exception ex) when (!runStarted && OutboundQueueFlusher.IsConnectivityFailure(ex))
+        {
+            // Never reached the gateway (no run started server-side): queue
+            // durably instead of losing the message. After run.started the
+            // server has the message, so re-queueing would duplicate it.
+            Transcript.Remove(userItem);
+            Transcript.Remove(assistant);
+            await QueueMessageAsync(sessionId, text);
         }
         catch (Exception ex)
         {
@@ -157,6 +272,174 @@ public sealed partial class ChatViewModel : ObservableObject
     }
 
     public void CancelStreaming() => _streamCts?.Cancel();
+
+    /// <summary>
+    /// Re-anchors the meter to the gateway's authoritative session totals and
+    /// estimated cost. Best-effort: per-turn token counts are already recorded
+    /// from the SSE usage payload, so a failed refresh only leaves cost stale.
+    /// </summary>
+    private async Task RefreshMeterFromSessionAsync()
+    {
+        var sessionId = _sessionId;
+        if (sessionId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var session = await _client.GetSessionAsync(sessionId).ConfigureAwait(false);
+            if (session is not null)
+            {
+                _dispatcher.TryEnqueue(() => _meter.SyncFromSession(session));
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Usage meter refresh failed: {ex.Message}");
+        }
+    }
+
+    private void Announce(string message) =>
+        AnnounceRequested?.Invoke(this, message);
+
+    /// <summary>
+    /// Stores the message durably and shows it in the transcript with the
+    /// "Queued — will send on reconnect" state.
+    /// </summary>
+    private async Task QueueMessageAsync(string sessionId, string text)
+    {
+        var queued = await _queue.EnqueueAsync(sessionId, text).ConfigureAwait(false);
+        _dispatcher.TryEnqueue(() =>
+        {
+            var item = new QueuedMessageItem(queued, RetryQueuedAsync);
+            _queueItems[queued.Id] = item;
+            Transcript.Add(item);
+            RefreshQueuedCount();
+            Announce("Message queued. It will send when the connection is restored.");
+        });
+    }
+
+    private async Task RetryQueuedAsync(QueuedMessage message)
+    {
+        await FlushQueueAsync().ConfigureAwait(false);
+        _dispatcher.TryEnqueue(() =>
+        {
+            // If the flush left this message untouched (gateway still down),
+            // restore its queued state instead of hanging on "Sending…".
+            if (_queueItems.TryGetValue(message.Id, out var item) && item.Status == "Sending…")
+            {
+                _ = RestoreItemStateAsync(item);
+            }
+        });
+    }
+
+    private async Task RestoreItemStateAsync(QueuedMessageItem item)
+    {
+        var current = (await _queue.GetPendingAsync().ConfigureAwait(false))
+            .FirstOrDefault(m => m.Id == item.Message.Id);
+        _dispatcher.TryEnqueue(() =>
+        {
+            if (current is null)
+            {
+                return;
+            }
+
+            item.Status = current.LastError is null ? "Queued — will send on reconnect." : "Send failed.";
+            item.Error = current.LastError;
+        });
+    }
+
+    /// <summary>
+    /// Drains the queue in the background (flushes are serialized inside the
+    /// flusher; this guard just avoids stacking redundant flush requests).
+    /// </summary>
+    private async Task FlushQueueAsync()
+    {
+        if (Interlocked.Exchange(ref _flushRunning, 1) == 1)
+        {
+            return;
+        }
+
+        var before = 0;
+        try
+        {
+            before = await _queue.CountAsync().ConfigureAwait(false);
+            if (before == 0)
+            {
+                return;
+            }
+
+            await _flusher.FlushAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _dispatcher.TryEnqueue(() => Error = FriendlyError(ex));
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _flushRunning, 0);
+        }
+
+        var after = await _queue.CountAsync().ConfigureAwait(false);
+        if (before > 0 && after == 0)
+        {
+            Announce("All queued messages sent.");
+        }
+    }
+
+    private void RefreshQueuedCount() => _ = RefreshQueuedCountAsync();
+
+    private async Task RefreshQueuedCountAsync()
+    {
+        var count = await _queue.CountAsync().ConfigureAwait(false);
+        _dispatcher.TryEnqueue(() => QueuedCount = count);
+    }
+
+    private void OnConnectionStateChanged(object? sender, ConnectionState state)
+    {
+        if (state == ConnectionState.Connected)
+        {
+            _ = FlushQueueAsync();
+        }
+    }
+
+    private void OnFlusherMessageSent(object? sender, QueuedMessageSentEventArgs e) =>
+        _dispatcher.TryEnqueue(() =>
+        {
+            if (_queueItems.Remove(e.Message.Id, out var item))
+            {
+                var index = Transcript.IndexOf(item);
+                Transcript.Remove(item);
+                if (e.Message.SessionId == _sessionId && index >= 0)
+                {
+                    Transcript.Insert(index, new UserMessageItem { Text = e.Message.Text });
+                    Transcript.Insert(index + 1, new AssistantMessageItem { Text = e.AssistantText });
+                }
+            }
+
+            RefreshQueuedCount();
+            Announce("Queued message sent.");
+            // A flushed message also spent tokens server-side: re-anchor the meter.
+            _ = RefreshMeterFromSessionAsync();
+        });
+
+    private void OnFlusherMessageFailed(object? sender, QueuedMessage e) =>
+        _dispatcher.TryEnqueue(() => _ = ApplyFailedStateAsync(e));
+
+    private async Task ApplyFailedStateAsync(QueuedMessage failed)
+    {
+        var current = (await _queue.GetPendingAsync().ConfigureAwait(false))
+            .FirstOrDefault(m => m.Id == failed.Id);
+        if (_queueItems.TryGetValue(failed.Id, out var item))
+        {
+            item.Status = "Send failed.";
+            item.Error = current?.LastError ?? "The gateway rejected the message.";
+            Announce($"Queued message failed to send: {item.Error}");
+        }
+
+        RefreshQueuedCount();
+    }
 
     private AssistantMessageItem ItemFor(string? messageId, AssistantMessageItem current) =>
         messageId is not null && _liveMessages.TryGetValue(messageId, out var item) ? item : current;
@@ -249,6 +532,12 @@ public sealed partial class ChatViewModel : ObservableObject
 
             case "run.completed":
                 current.Status = "";
+                if (TurnUsage.FromEvent(e, _meter.Turns.Count + 1) is { } turn)
+                {
+                    _meter.RecordTurn(turn);
+                    _ = RefreshMeterFromSessionAsync();
+                }
+
                 break;
 
             case "run.cancelled":

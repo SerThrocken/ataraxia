@@ -4,18 +4,24 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Hermes.Client.WinUI3.Controls"
+    xmlns:core="using:Hermes.Client.Core"
     mc:Ignorable="d"
     Title="Hermes">
 
     <Grid>
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Modifiers="Control" Key="K" Invoked="OpenPaletteAccelerator_Invoked" />
+        </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="48" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Border x:Name="AppTitleBar" Grid.Row="0" Background="Transparent">
             <Grid>
-                <TextBlock Text="Hermes"
+                <TextBlock Text="Ataraxia"
                            VerticalAlignment="Center"
                            Margin="16,0,0,0"
                            Style="{StaticResource CaptionTextBlockStyle}" />
@@ -23,8 +29,11 @@
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             Margin="0,0,16,0"
-                            Spacing="6">
-                    <Ellipse x:Name="ConnectionDot" Width="8" Height="8" Fill="Gray" />
+                            Spacing="6"
+                            AutomationProperties.Name="Connection status">
+                    <Ellipse x:Name="ConnectionDot" Width="8" Height="8"
+                             Fill="{ThemeResource SystemFillColorNeutralBrush}"
+                             AutomationProperties.AccessibilityView="Raw" />
                     <TextBlock x:Name="ConnectionText"
                                Text="Not tested"
                                Style="{StaticResource CaptionTextBlockStyle}"
@@ -49,6 +58,26 @@
                         <SymbolIcon Symbol="Clock" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="Hand off" Tag="handoff">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Share" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Mission Control" Tag="missioncontrol">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="ViewAll" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Cron jobs" Tag="cron">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Calendar" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Search" Tag="search">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Find" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Content="Models" Tag="models">
                     <NavigationViewItem.Icon>
                         <SymbolIcon Symbol="Library" />
@@ -57,6 +86,42 @@
                 <NavigationViewItem Content="Skills" Tag="skills">
                     <NavigationViewItem.Icon>
                         <SymbolIcon Symbol="AllApps" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Terminal" Tag="terminal">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE756;" FontFamily="Segoe MDL2 Assets" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Voice" Tag="voice">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Microphone" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Memory" Tag="memory">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Save" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Health" Tag="health">
+                    <NavigationViewItem.Icon>
+                        <!-- Heart is not a Symbol enum member (WMC0055); Like verified at compile time. -->
+                        <SymbolIcon Symbol="Like" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Analytics" Tag="analytics">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="ViewAll" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Providers" Tag="providers">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Globe" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Diagnostics" Tag="diagnostics">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Repair" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Settings" Tag="settings">
@@ -68,5 +133,48 @@
 
             <Frame x:Name="ContentFrame" />
         </NavigationView>
+
+        <!-- Status bar: live token/cost meter for the current session. -->
+        <Border Grid.Row="2"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <Button x:Name="UsageMeterButton"
+                    HorizontalAlignment="Right"
+                    Margin="0,0,8,0"
+                    Padding="10,4"
+                    Style="{StaticResource TextBlockButtonStyle}"
+                    Content="{x:Bind Meter.SummaryText, Mode=OneWay}"
+                    AutomationProperties.Name="{x:Bind Meter.ScreenReaderText, Mode=OneWay}"
+                    ToolTipService.ToolTip="Token and cost usage for this session">
+                <Button.Flyout>
+                    <Flyout>
+                        <StackPanel MinWidth="300" Spacing="8">
+                            <TextBlock Text="Session usage"
+                                       Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="{x:Bind Meter.SummaryText, Mode=OneWay}"
+                                       Style="{StaticResource BodyTextBlockStyle}" />
+                            <ListView ItemsSource="{x:Bind Meter.Turns, Mode=OneWay}"
+                                      MaxHeight="240"
+                                      SelectionMode="None"
+                                      AutomationProperties.Name="Per-turn token breakdown">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="core:TurnUsage">
+                                        <!-- TurnUsage is immutable: OneTime is correct and warning-free. -->
+                                        <TextBlock Text="{x:Bind Summary}" />
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+        </Border>
+
+        <!-- Ctrl+K command palette overlay. ViewModel is attached in code-behind:
+             x:Bind cannot root at Window (not a FrameworkElement). -->
+        <controls:CommandPaletteControl x:Name="PaletteControl"
+                                        Grid.RowSpan="3"
+                                        Visibility="Collapsed" />
     </Grid>
 </Window>
