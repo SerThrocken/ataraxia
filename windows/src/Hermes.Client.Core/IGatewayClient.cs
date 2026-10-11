@@ -4,7 +4,7 @@ namespace Hermes.Client.Core;
 /// Thin async client over the Hermes CLI gateway (port 8642).
 /// Method names mirror the verified endpoint table in api-contract.md.
 /// </summary>
-public interface IGatewayClient : IAsyncDisposable
+public partial interface IGatewayClient : IAsyncDisposable
 {
     // GET /api/sessions (paginated)
     Task<SessionPage> GetSessionsPageAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default);
@@ -12,6 +12,9 @@ public interface IGatewayClient : IAsyncDisposable
     // GET/POST /api/sessions
     Task<IReadOnlyList<Session>> GetSessionsAsync(CancellationToken cancellationToken = default);
     Task<Session> CreateSessionAsync(string? title = null, CancellationToken cancellationToken = default);
+
+    // GET /api/sessions/{id} — carries input_tokens/output_tokens/estimated_cost_usd
+    Task<Session?> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default);
 
     // /api/sessions/{id}/messages
     Task<IReadOnlyList<ChatMessage>> GetMessagesAsync(string sessionId, CancellationToken cancellationToken = default);

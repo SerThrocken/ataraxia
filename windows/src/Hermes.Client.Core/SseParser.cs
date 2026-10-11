@@ -56,6 +56,17 @@ public static class SseParser
             {
                 dataLines.Add(value);
             }
+            else if (line.StartsWith("id", StringComparison.Ordinal)
+                || line.StartsWith("retry", StringComparison.Ordinal))
+            {
+                continue; // SSE control fields we don't retain.
+            }
+            else if (dataLines.Count > 0)
+            {
+                // Continuation of a multi-line data payload (e.g. pretty-printed
+                // JSON without a "data:" prefix on each line).
+                dataLines.Add(line);
+            }
         }
 
         // Trailing frame without a terminating blank line.
