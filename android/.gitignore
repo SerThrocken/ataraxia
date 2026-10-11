@@ -1,0 +1,22 @@
+# Gradle
+.gradle/
+.kotlin/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+local.properties
+.DS_Store
+
+# Signing
+*.jks
+*.keystore
+
+# Native
+*.so
+obj/
