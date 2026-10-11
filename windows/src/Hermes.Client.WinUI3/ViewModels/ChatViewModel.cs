@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Hermes.Client.Core;
+using Hermes.Client.WinUI3.Services;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage.Streams;
@@ -31,6 +32,9 @@ public sealed partial class ChatViewModel : ObservableObject
     private readonly IOutboundMessageQueue _queue;
     private readonly OutboundQueueFlusher _flusher;
     private readonly IConnectionState _connection;
+    private readonly ICameraCaptureService _camera;
+    private readonly TaskbarProgressTracker _tracker;
+    private readonly ToolDiffRegistry _diffs;
     private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
     private readonly Dictionary<string, AssistantMessageItem> _liveMessages = new();
     private readonly Dictionary<string, QueuedMessageItem> _queueItems = new();
@@ -49,13 +53,19 @@ public sealed partial class ChatViewModel : ObservableObject
         UsageMeter meter,
         IOutboundMessageQueue queue,
         OutboundQueueFlusher flusher,
-        IConnectionState connection)
+        IConnectionState connection,
+        ToolDiffRegistry diffs,
+        ICameraCaptureService camera,
+        TaskbarProgressTracker tracker)
     {
         _client = client;
         _meter = meter;
         _queue = queue;
         _flusher = flusher;
         _connection = connection;
+        _diffs = diffs;
+        _camera = camera;
+        _tracker = tracker;
         _flusher.MessageSent += OnFlusherMessageSent;
         _flusher.MessageFailed += OnFlusherMessageFailed;
         _connection.StateChanged += OnConnectionStateChanged;
@@ -92,6 +102,23 @@ public sealed partial class ChatViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]
     public partial bool IsStreaming { get; set; }
 
+    /// <summary>Photo captured from the camera, waiting to send with the next message.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SendCommand))]
+    [NotifyPropertyChangedFor(nameof(HasPendingPhoto))]
+    public partial CapturedPhoto? PendingPhoto { get; set; }
+
+    /// <summary>Preview bitmap for the pending photo (UI thread).</summary>
+    [ObservableProperty]
+    public partial BitmapImage? PendingPhotoImage { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SendCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CapturePhotoCommand))]
+    public partial bool IsCapturingPhoto { get; set; }
+
+    public bool HasPendingPhoto => PendingPhoto is not null;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
     public partial string? Error { get; set; }
@@ -117,7 +144,51 @@ public sealed partial class ChatViewModel : ObservableObject
     public bool ArtifactPaneVisible => HasArtifacts;
 
     private bool CanSend() =>
-        !IsStreaming && !string.IsNullOrWhiteSpace(InputText) && _sessionId is not null;
+        !IsStreaming && !IsCapturingPhoto
+        && (!string.IsNullOrWhiteSpace(InputText) || PendingPhoto is not null)
+        && _sessionId is not null;
+
+    private bool CanCapturePhoto() => !IsCapturingPhoto && !IsStreaming && _sessionId is not null;
+
+    /// <summary>
+    /// Captures one still frame from the device camera and stages it as the
+    /// pending attachment for the next send. The camera is opened only for
+    /// the capture and released immediately after.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCapturePhoto))]
+    public async Task CapturePhotoAsync()
+    {
+        if (IsCapturingPhoto)
+        {
+            return;
+        }
+
+        IsCapturingPhoto = true;
+        Error = null;
+        try
+        {
+            var photo = await _camera.CapturePhotoAsync();
+            PendingPhoto = photo;
+            PendingPhotoImage = await LoadImageAsync(photo.JpegData);
+            Announce("Photo attached. It will be sent with your next message.");
+        }
+        catch (Exception ex)
+        {
+            Error = FriendlyError(ex);
+        }
+        finally
+        {
+            IsCapturingPhoto = false;
+        }
+    }
+
+    [RelayCommand]
+    public void RemovePhoto()
+    {
+        PendingPhoto = null;
+        PendingPhotoImage = null;
+        Announce("Photo removed.");
+    }
 
     public async Task OpenSessionAsync(string sessionId, string? title)
     {
@@ -207,22 +278,33 @@ public sealed partial class ChatViewModel : ObservableObject
     {
         var text = InputText.Trim();
         var sessionId = _sessionId;
-        if (string.IsNullOrEmpty(text) || sessionId is null || IsStreaming)
+        var photo = PendingPhoto;
+        var photoPreview = PendingPhotoImage;
+        if ((string.IsNullOrEmpty(text) && photo is null) || sessionId is null || IsStreaming)
         {
             return;
         }
 
         InputText = "";
+        PendingPhoto = null;
+        PendingPhotoImage = null;
         Error = null;
+
+        // The gateway accepts image_url parts with data:image/... URLs
+        // (verified against gateway source, 2026-10-11).
+        ChatImageAttachment? image = photo is null
+            ? null
+            : new ChatImageAttachment(photo.JpegData, "image/jpeg");
 
         if (_connection.State == ConnectionState.Disconnected)
         {
             // Known offline: skip the doomed request, queue durably at once.
-            await QueueMessageAsync(sessionId, text);
+            // The photo rides in the queue entry — never silently dropped.
+            await QueueMessageAsync(sessionId, text, image);
             return;
         }
 
-        var userItem = new UserMessageItem { Text = text };
+        var userItem = new UserMessageItem { Text = text, Image = photoPreview };
         var assistant = new AssistantMessageItem();
         Transcript.Add(userItem);
         Transcript.Add(assistant);
@@ -232,7 +314,10 @@ public sealed partial class ChatViewModel : ObservableObject
 
         try
         {
-            await foreach (var e in _client.StreamChatEventsAsync(sessionId, text, _streamCts.Token))
+            var events = image is null
+                ? _client.StreamChatEventsAsync(sessionId, text, _streamCts.Token)
+                : _client.StreamChatEventsWithImageAsync(sessionId, text, image, _streamCts.Token);
+            await foreach (var e in events)
             {
                 using (e)
                 {
@@ -256,7 +341,7 @@ public sealed partial class ChatViewModel : ObservableObject
             // server has the message, so re-queueing would duplicate it.
             Transcript.Remove(userItem);
             Transcript.Remove(assistant);
-            await QueueMessageAsync(sessionId, text);
+            await QueueMessageAsync(sessionId, text, image);
         }
         catch (Exception ex)
         {
@@ -305,18 +390,23 @@ public sealed partial class ChatViewModel : ObservableObject
 
     /// <summary>
     /// Stores the message durably and shows it in the transcript with the
-    /// "Queued — will send on reconnect" state.
+    /// "Queued — will send on reconnect" state. An attached photo is stored
+    /// with the entry and sent through the image chat path on flush.
     /// </summary>
-    private async Task QueueMessageAsync(string sessionId, string text)
+    private async Task QueueMessageAsync(string sessionId, string text, ChatImageAttachment? image)
     {
-        var queued = await _queue.EnqueueAsync(sessionId, text).ConfigureAwait(false);
+        // The store requires non-blank text; a photo-only message queues with
+        // an empty body and the photo attached.
+        var queued = await _queue.EnqueueAsync(sessionId, text, image).ConfigureAwait(false);
         _dispatcher.TryEnqueue(() =>
         {
             var item = new QueuedMessageItem(queued, RetryQueuedAsync);
             _queueItems[queued.Id] = item;
             Transcript.Add(item);
             RefreshQueuedCount();
-            Announce("Message queued. It will send when the connection is restored.");
+            Announce(image is null
+                ? "Message queued. It will send when the connection is restored."
+                : "Message with photo queued. It will send when the connection is restored.");
         });
     }
 
@@ -353,6 +443,8 @@ public sealed partial class ChatViewModel : ObservableObject
     /// <summary>
     /// Drains the queue in the background (flushes are serialized inside the
     /// flusher; this guard just avoids stacking redundant flush requests).
+    /// The drain is tracked as a taskbar-progress operation: indeterminate
+    /// while starting, determinate by message count as the flusher reports.
     /// </summary>
     private async Task FlushQueueAsync()
     {
@@ -361,16 +453,27 @@ public sealed partial class ChatViewModel : ObservableObject
             return;
         }
 
-        var before = 0;
+        var before = await _queue.CountAsync().ConfigureAwait(false);
+        if (before == 0)
+        {
+            Interlocked.Exchange(ref _flushRunning, 0);
+            return;
+        }
+
+        using var operation = _tracker.BeginOperation();
         try
         {
-            before = await _queue.CountAsync().ConfigureAwait(false);
-            if (before == 0)
+            void OnProgress(object? sender, FlushProgressEventArgs e) =>
+                operation.Report(e.Total <= 0 ? 0 : (double)e.Completed / e.Total);
+            _flusher.Progress += OnProgress;
+            try
             {
-                return;
+                await _flusher.FlushAsync().ConfigureAwait(false);
             }
-
-            await _flusher.FlushAsync().ConfigureAwait(false);
+            finally
+            {
+                _flusher.Progress -= OnProgress;
+            }
         }
         catch (Exception ex)
         {
@@ -405,7 +508,7 @@ public sealed partial class ChatViewModel : ObservableObject
     }
 
     private void OnFlusherMessageSent(object? sender, QueuedMessageSentEventArgs e) =>
-        _dispatcher.TryEnqueue(() =>
+        _dispatcher.TryEnqueue(async () =>
         {
             if (_queueItems.Remove(e.Message.Id, out var item))
             {
@@ -413,7 +516,11 @@ public sealed partial class ChatViewModel : ObservableObject
                 Transcript.Remove(item);
                 if (e.Message.SessionId == _sessionId && index >= 0)
                 {
-                    Transcript.Insert(index, new UserMessageItem { Text = e.Message.Text });
+                    Transcript.Insert(index, new UserMessageItem
+                    {
+                        Text = e.Message.Text,
+                        Image = await LoadImageOrNullAsync(e.Message.ImageAttachment?.Data),
+                    });
                     Transcript.Insert(index + 1, new AssistantMessageItem { Text = e.AssistantText });
                 }
             }
@@ -498,6 +605,7 @@ public sealed partial class ChatViewModel : ObservableObject
             case "tool.completed":
                 current.Status = $"{e.GetString("tool_name") ?? "Tool"} finished.";
                 ScanArtifacts(e.GetString("preview") ?? "");
+                RegisterToolDiff(e);
                 break;
 
             case "tool.failed":
@@ -560,6 +668,37 @@ public sealed partial class ChatViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Feeds a completed tool call's <c>inline_diff</c> into the shared
+    /// <see cref="ToolDiffRegistry"/> and appends a <see cref="DiffItem"/> so
+    /// the transcript offers per-hunk review. No-op when the gateway sent no
+    /// diff (the 8642 HTTP streams don't forward <c>inline_diff</c> today —
+    /// verified 2026-10-11).
+    /// </summary>
+    private void RegisterToolDiff(SseEvent e)
+    {
+        var key = ToolDiffExtractor.GetToolCallId(e) ?? e.GetString("message_id");
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return;
+        }
+
+        var files = ToolDiffExtractor.ExtractFiles(e);
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        _diffs.Set(key, files);
+        Transcript.Add(new DiffItem
+        {
+            ToolCallId = key,
+            ToolName = e.GetString("tool_name"),
+            FileCount = files.Count,
+            DiffSource = _diffs,
+        });
+    }
+
     private void ScanArtifacts(string text)
     {
         foreach (Match match in ArtifactLink.Matches(text))
@@ -574,9 +713,23 @@ public sealed partial class ChatViewModel : ObservableObject
 
     private async Task DownloadArtifactAsync(string artifactId)
     {
+        // Taskbar progress: indeterminate until the gateway's Content-Length
+        // is known, then determinate with real byte counts.
+        using var operation = _tracker.BeginOperation();
         try
         {
-            var download = await _client.DownloadArtifactAsync(artifactId);
+            var progress = new Progress<ArtifactDownloadProgress>(p =>
+            {
+                if (p.TotalBytes is null or <= 0)
+                {
+                    operation.ReportIndeterminate();
+                }
+                else
+                {
+                    operation.Report((double)p.BytesReceived / p.TotalBytes.Value);
+                }
+            });
+            var download = await _client.DownloadArtifactWithProgressAsync(artifactId, progress);
             var item = new ArtifactItem
             {
                 ArtifactId = download.ArtifactId,
@@ -611,6 +764,24 @@ public sealed partial class ChatViewModel : ObservableObject
         stream.Seek(0);
         await bitmap.SetSourceAsync(stream);
         return bitmap;
+    }
+
+    /// <summary>Decodes attached photo bytes for the transcript; null when absent or undecodable.</summary>
+    private static async Task<BitmapImage?> LoadImageOrNullAsync(byte[]? data)
+    {
+        if (data is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await LoadImageAsync(data);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     private static string FriendlyError(Exception ex) => ex switch

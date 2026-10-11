@@ -117,3 +117,9 @@ public sealed record ArtifactDownload(
     string? ContentType,
     string? Sha256,
     byte[] Data);
+
+/// <summary>
+/// Byte progress for <c>GET /v1/artifacts/download/{id}</c>.
+/// <c>TotalBytes</c> is null when the gateway omits Content-Length.
+/// </summary>
+public sealed record ArtifactDownloadProgress(long BytesReceived, long? TotalBytes);

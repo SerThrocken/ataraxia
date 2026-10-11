@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -93,6 +94,29 @@ public abstract partial class GatewayClientBase : IGatewayClient
     }
 
     /// <summary>
+    /// Serializes the chat-stream request body. Text-only turns keep the exact
+    /// legacy wire shape (<c>{"message":"..."}</c>); a photo switches the body
+    /// to the OpenAI-style parts array the gateway's
+    /// <c>_normalize_multimodal_content</c> accepts
+    /// (verified against gateway source, 2026-10-11): text + image_url parts
+    /// with a <c>data:image/...;base64,...</c> URL.
+    /// </summary>
+    public static string BuildChatMessageJson(string text, ChatImageAttachment? image)
+    {
+        object body = image is null
+            ? new { message = text }
+            : new
+            {
+                message = new object[]
+                {
+                    new { type = "text", text },
+                    new { type = "image_url", image_url = new { url = image.ToDataUrl() } },
+                },
+            };
+        return JsonSerializer.Serialize(body, Json);
+    }
+
+    /// <summary>
     /// POST /api/sessions/{id}/chat/stream; yields typed SSE events
     /// (assistant.delta, tool.progress, approval.request, …, done).
     /// </summary>
@@ -106,7 +130,7 @@ public abstract partial class GatewayClientBase : IGatewayClient
             HttpMethod.Post,
             $"api/sessions/{Uri.EscapeDataString(sessionId)}/chat/stream")
         {
-            Content = JsonContent.Create(new { message }, options: Json),
+            Content = new StringContent(BuildChatMessageJson(message, image: null), Encoding.UTF8, "application/json"),
         };
         using var response = await Http
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
@@ -117,6 +141,59 @@ public abstract partial class GatewayClientBase : IGatewayClient
         {
             yield return e;
         }
+    }
+
+    /// <summary>
+    /// Chat-stream turn carrying a photo (parts-array body). Shares the event
+    /// parsing with <see cref="StreamChatEventsAsync"/>.
+    /// </summary>
+    public virtual async IAsyncEnumerable<SseEvent> StreamChatEventsWithImageAsync(
+        string sessionId,
+        string text,
+        ChatImageAttachment image,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(image);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"api/sessions/{Uri.EscapeDataString(sessionId)}/chat/stream")
+        {
+            Content = new StringContent(BuildChatMessageJson(text, image), Encoding.UTF8, "application/json"),
+        };
+        using var response = await Http
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            .ConfigureAwait(false);
+        await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await foreach (var e in SseParser.ReadEventsAsync(stream, cancellationToken).ConfigureAwait(false))
+        {
+            yield return e;
+        }
+    }
+
+    /// <summary>
+    /// Non-streaming chat turn with a photo: drains the SSE stream into one
+    /// <see cref="ChatMessage"/>, mirroring the text-only implementations.
+    /// </summary>
+    public virtual async Task<ChatMessage> SendChatWithImageAsync(
+        string sessionId, string text, ChatImageAttachment image, CancellationToken cancellationToken = default)
+    {
+        var reply = new StringBuilder();
+        string? messageId = null;
+        await foreach (var e in StreamChatEventsWithImageAsync(sessionId, text, image, cancellationToken).ConfigureAwait(false))
+        {
+            using (e)
+            {
+                if (e.Name == "assistant.delta" && e.GetString("delta") is { } delta)
+                {
+                    messageId ??= e.GetString("message_id");
+                    reply.Append(delta);
+                }
+            }
+        }
+
+        return new ChatMessage(messageId, sessionId, "assistant", reply.ToString(), null, null, null, null, null, null);
     }
 
     /// <summary>POST /v1/runs/{run_id}/approval {"choice": …}.</summary>
@@ -142,16 +219,39 @@ public abstract partial class GatewayClientBase : IGatewayClient
     }
 
     /// <summary>GET /v1/artifacts/download/{id}: one-shot raw bytes + receipt headers.</summary>
-    public virtual async Task<ArtifactDownload> DownloadArtifactAsync(
-        string artifactId, CancellationToken cancellationToken = default)
+    public virtual Task<ArtifactDownload> DownloadArtifactAsync(
+        string artifactId, CancellationToken cancellationToken = default) =>
+        DownloadArtifactWithProgressAsync(artifactId, progress: null, cancellationToken);
+
+    /// <summary>
+    /// GET /v1/artifacts/download/{id} streamed with byte progress. Reports
+    /// <see cref="ArtifactDownloadProgress"/> as chunks arrive;
+    /// <c>TotalBytes</c> is null when the gateway omits Content-Length.
+    /// </summary>
+    public virtual async Task<ArtifactDownload> DownloadArtifactWithProgressAsync(
+        string artifactId, IProgress<ArtifactDownloadProgress>? progress, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(artifactId);
-        using var response = await Http
-            .GetAsync($"v1/artifacts/download/{Uri.EscapeDataString(artifactId)}", cancellationToken)
-            .ConfigureAwait(false);
+        using var response = await Http.GetAsync(
+                $"v1/artifacts/download/{Uri.EscapeDataString(artifactId)}",
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
-        var data = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
 
+        var total = response.Content.Headers.ContentLength;
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var buffer = new MemoryStream((int)Math.Min(total ?? 0, 16 * 1024 * 1024));
+        var chunk = new byte[8192];
+        long received = 0;
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            received += read;
+            progress?.Report(new ArtifactDownloadProgress(received, total));
+        }
+
+        var data = buffer.ToArray();
         var disposition = response.Content.Headers.ContentDisposition;
         var fileName = disposition?.FileNameStar ?? disposition?.FileName;
         response.Headers.TryGetValues("X-Artifact-Sha256", out var sha256);

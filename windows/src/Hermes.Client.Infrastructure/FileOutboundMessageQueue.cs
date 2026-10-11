@@ -30,17 +30,26 @@ public sealed class FileOutboundMessageQueue : IOutboundMessageQueue
         _path = Path.Combine(dir, FileName);
     }
 
-    public async Task<QueuedMessage> EnqueueAsync(string sessionId, string text, CancellationToken cancellationToken = default)
+    public Task<QueuedMessage> EnqueueAsync(string sessionId, string text, CancellationToken cancellationToken = default) =>
+        EnqueueAsync(sessionId, text, image: null, cancellationToken);
+
+    public async Task<QueuedMessage> EnqueueAsync(
+        string sessionId, string text, ChatImageAttachment? image, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        if (string.IsNullOrWhiteSpace(text) && image is null)
+        {
+            throw new ArgumentException("Message text must not be empty.", nameof(text));
+        }
         var message = new QueuedMessage(
             Id: Guid.NewGuid().ToString("N"),
             SessionId: sessionId,
             Text: text,
             EnqueuedUtc: DateTime.UtcNow,
             AttemptCount: 0,
-            LastError: null);
+            LastError: null,
+            ImageData: image?.Data,
+            ImageMimeType: image?.MimeType);
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try

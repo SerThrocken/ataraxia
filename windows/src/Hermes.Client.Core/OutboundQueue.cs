@@ -3,6 +3,9 @@ namespace Hermes.Client.Core;
 /// <summary>
 /// One outbound chat message waiting for the gateway. The store owns
 /// persistence: once EnqueueAsync returns, the message survives app restarts.
+/// An attached photo rides along as raw bytes + MIME type (serialized as
+/// base64 by the JSON store); the flusher sends it through the image chat
+/// path so a queued photo is never silently dropped.
 /// </summary>
 public sealed record QueuedMessage(
     string Id,
@@ -10,7 +13,16 @@ public sealed record QueuedMessage(
     string Text,
     DateTime EnqueuedUtc,
     int AttemptCount,
-    string? LastError);
+    string? LastError,
+    byte[]? ImageData = null,
+    string? ImageMimeType = null)
+{
+    /// <summary>Rebuilds the attachment the flusher sends, or null when text-only.</summary>
+    public ChatImageAttachment? ImageAttachment =>
+        ImageData is { Length: > 0 } && !string.IsNullOrEmpty(ImageMimeType)
+            ? new ChatImageAttachment(ImageData, ImageMimeType)
+            : null;
+}
 
 /// <summary>
 /// Durable FIFO store for outbound chat messages. Implementations must be
@@ -19,6 +31,9 @@ public sealed record QueuedMessage(
 public interface IOutboundMessageQueue
 {
     Task<QueuedMessage> EnqueueAsync(string sessionId, string text, CancellationToken cancellationToken = default);
+
+    Task<QueuedMessage> EnqueueAsync(
+        string sessionId, string text, ChatImageAttachment? image, CancellationToken cancellationToken = default);
 
     /// <summary>Pending messages oldest-first (includes previously failed ones, for retry).</summary>
     Task<IReadOnlyList<QueuedMessage>> GetPendingAsync(CancellationToken cancellationToken = default);
@@ -32,6 +47,16 @@ public sealed class QueuedMessageSentEventArgs(QueuedMessage message, string ass
 {
     public QueuedMessage Message { get; } = message;
     public string AssistantText { get; } = assistantText;
+}
+
+/// <summary>
+/// Progress of one <see cref="OutboundQueueFlusher"/> drain: messages
+/// completed (sent or failed) out of the total pending when the flush began.
+/// </summary>
+public sealed class FlushProgressEventArgs(int completed, int total) : EventArgs
+{
+    public int Completed { get; } = completed;
+    public int Total { get; } = total;
 }
 
 /// <summary>
@@ -52,6 +77,12 @@ public sealed class OutboundQueueFlusher
     public event EventHandler<QueuedMessageSentEventArgs>? MessageSent;
     public event EventHandler<QueuedMessage>? MessageFailed;
 
+    /// <summary>
+    /// Raised as the flush drains: (0, total) at start, then (completed, total)
+    /// after each message. Backs the taskbar progress for queue flushes.
+    /// </summary>
+    public event EventHandler<FlushProgressEventArgs>? Progress;
+
     public OutboundQueueFlusher(IGatewayClient client, IOutboundMessageQueue queue)
     {
         _client = client;
@@ -63,14 +94,21 @@ public sealed class OutboundQueueFlusher
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            foreach (var message in await _queue.GetPendingAsync(cancellationToken).ConfigureAwait(false))
+            var pending = await _queue.GetPendingAsync(cancellationToken).ConfigureAwait(false);
+            var completed = 0;
+            Progress?.Invoke(this, new FlushProgressEventArgs(completed, pending.Count));
+            foreach (var message in pending)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    var reply = await _client
-                        .SendChatAsync(message.SessionId, message.Text, cancellationToken)
-                        .ConfigureAwait(false);
+                    var reply = message.ImageAttachment is { } image
+                        ? await _client
+                            .SendChatWithImageAsync(message.SessionId, message.Text, image, cancellationToken)
+                            .ConfigureAwait(false)
+                        : await _client
+                            .SendChatAsync(message.SessionId, message.Text, cancellationToken)
+                            .ConfigureAwait(false);
                     await _queue.MarkSentAsync(message.Id, cancellationToken).ConfigureAwait(false);
                     MessageSent?.Invoke(this, new QueuedMessageSentEventArgs(message, reply.Content));
                 }
@@ -87,6 +125,11 @@ public sealed class OutboundQueueFlusher
                 {
                     await _queue.MarkFailedAsync(message.Id, ex.Message, cancellationToken).ConfigureAwait(false);
                     MessageFailed?.Invoke(this, message);
+                }
+                finally
+                {
+                    completed++;
+                    Progress?.Invoke(this, new FlushProgressEventArgs(completed, pending.Count));
                 }
             }
         }

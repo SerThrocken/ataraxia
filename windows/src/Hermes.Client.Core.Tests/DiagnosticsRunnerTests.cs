@@ -50,9 +50,12 @@ public sealed class DiagnosticsRunnerTests
         public Task<IReadOnlyList<ChatMessage>> GetMessagesAsync(string sessionId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ChatMessage> SendChatAsync(string sessionId, string content, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public IAsyncEnumerable<SseEvent> StreamChatEventsAsync(string sessionId, string message, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public IAsyncEnumerable<SseEvent> StreamChatEventsWithImageAsync(string sessionId, string text, ChatImageAttachment image, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ChatMessage> SendChatWithImageAsync(string sessionId, string text, ChatImageAttachment image, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public IAsyncEnumerable<string> StreamChatAsync(string sessionId, string content, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ApprovalResolution> ResolveApprovalAsync(string runId, string choice, string? requestId = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ArtifactDownload> DownloadArtifactAsync(string artifactId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ArtifactDownload> DownloadArtifactWithProgressAsync(string artifactId, IProgress<ArtifactDownloadProgress>? progress, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<SkillInfo>> GetSkillsAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<ToolsetInfo>> GetToolsetsAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<RunCreateResponse> CreateRunAsync(string input, string? sessionId = null, string? model = null, string? idempotencyKey = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();

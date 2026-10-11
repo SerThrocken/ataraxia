@@ -18,8 +18,14 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="48,4,0,4"
                     AutomationProperties.Name="{x:Bind Text}">
-                <TextBlock Text="{x:Bind Text, Mode=OneWay}"
-                           TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                <StackPanel Spacing="6">
+                    <Image Source="{x:Bind Image, Mode=OneWay}"
+                           Visibility="{x:Bind HasImage, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                           Stretch="Uniform" MaxHeight="220"
+                           AutomationProperties.Name="Attached photo" />
+                    <TextBlock Text="{x:Bind Text, Mode=OneWay}"
+                               TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                </StackPanel>
             </Border>
         </DataTemplate>
 
@@ -105,8 +111,13 @@
                     BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="48,4,0,4"
                     AutomationProperties.Name="{x:Bind Text, Mode=OneWay}">
                 <StackPanel Spacing="4">
-                    <TextBlock Text="{x:Bind Text, Mode=OneWay}"
+                    <TextBlock Text="{x:Bind DisplayText, Mode=OneWay}"
                                TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    <TextBlock Text="Photo attached"
+                               Visibility="{x:Bind HasImage, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               AutomationProperties.Name="Photo attached to queued message" />
                     <TextBlock Text="{x:Bind Status, Mode=OneWay}"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -125,11 +136,31 @@
             </Border>
         </DataTemplate>
 
+        <DataTemplate x:Key="DiffTemplate" x:DataType="vm:DiffItem">
+            <Border HorizontalAlignment="Stretch" MaxWidth="720"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="0,4,48,4"
+                    AutomationProperties.Name="{x:Bind Summary, Mode=OneWay}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{x:Bind Summary, Mode=OneWay}" FontWeight="SemiBold"
+                               AutomationProperties.HeadingLevel="Level2" />
+                    <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                        <controls:DiffViewer DiffSource="{x:Bind DiffSource, Mode=OneWay}"
+                                             ToolCallId="{x:Bind ToolCallId, Mode=OneWay}" />
+                    </ScrollViewer>
+                    <Button Content="Review changes…" Click="OnReviewDiffClick"
+                            AutomationProperties.Name="Review file changes hunk by hunk" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
         <controls:TranscriptTemplateSelector x:Key="TranscriptSelector"
                                              UserTemplate="{StaticResource UserTemplate}"
                                              AssistantTemplate="{StaticResource AssistantTemplate}"
                                              ApprovalTemplate="{StaticResource ApprovalTemplate}"
                                              ToolTemplate="{StaticResource ToolTemplate}"
+                                             DiffTemplate="{StaticResource DiffTemplate}"
                                              QueuedTemplate="{StaticResource QueuedTemplate}" />
     </Page.Resources>
 
@@ -145,6 +176,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -182,9 +214,22 @@
                      AutomationProperties.Name="{x:Bind ViewModel.QueueStatusText, Mode=OneWay}"
                      AutomationProperties.LiveSetting="Polite" />
 
-            <Grid Grid.Row="4" ColumnSpacing="8">
+            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8"
+                        Visibility="{x:Bind ViewModel.HasPendingPhoto, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                        AutomationProperties.Name="Photo to send">
+                <Image Source="{x:Bind ViewModel.PendingPhotoImage, Mode=OneWay}"
+                       Width="96" Height="72" Stretch="UniformToFill"
+                       AutomationProperties.Name="Photo preview" />
+                <Button Content="Remove photo"
+                        Command="{x:Bind ViewModel.RemovePhotoCommand}"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="Remove attached photo" />
+            </StackPanel>
+
+            <Grid Grid.Row="5" ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBox Grid.Column="0" x:Name="MessageInput"
@@ -192,7 +237,11 @@
                          PlaceholderText="Type a message…"
                          AutomationProperties.Name="Message input"
                          KeyDown="MessageInput_KeyDown" />
-                <Button Grid.Column="1" Content="Send"
+                <Button Grid.Column="1" Content="&#xE714;" FontFamily="Segoe MDL2 Assets"
+                        Command="{x:Bind ViewModel.CapturePhotoCommand}"
+                        AutomationProperties.Name="Take a photo with the camera"
+                        ToolTipService.ToolTip="Attach a camera photo" />
+                <Button Grid.Column="2" Content="Send"
                         Command="{x:Bind ViewModel.SendCommand}"
                         AutomationProperties.Name="Send message"
                         ToolTipService.ToolTip="Send (Enter)" />

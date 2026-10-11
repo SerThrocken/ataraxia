@@ -15,7 +15,11 @@ public sealed class OutboundQueueTests
     {
         private readonly List<QueuedMessage> _items = new();
 
-        public Task<QueuedMessage> EnqueueAsync(string sessionId, string text, CancellationToken cancellationToken = default)
+        public Task<QueuedMessage> EnqueueAsync(string sessionId, string text, CancellationToken cancellationToken = default) =>
+            EnqueueAsync(sessionId, text, image: null, cancellationToken);
+
+        public Task<QueuedMessage> EnqueueAsync(
+            string sessionId, string text, ChatImageAttachment? image, CancellationToken cancellationToken = default)
         {
             var item = new QueuedMessage(
                 Id: Guid.NewGuid().ToString("N"),
@@ -23,7 +27,9 @@ public sealed class OutboundQueueTests
                 Text: text,
                 EnqueuedUtc: DateTime.UtcNow,
                 AttemptCount: 0,
-                LastError: null);
+                LastError: null,
+                ImageData: image?.Data,
+                ImageMimeType: image?.MimeType);
             lock (_items)
             {
                 _items.Add(item);
@@ -78,6 +84,7 @@ public sealed class OutboundQueueTests
     private sealed class FakeClient : IGatewayClient
     {
         public readonly List<(string SessionId, string Content)> Sent = new();
+        public readonly List<(string SessionId, string Content, ChatImageAttachment Image)> SentWithImage = new();
         public Func<string, string, Task<ChatMessage>>? Behavior;
 
         public Task<ChatMessage> SendChatAsync(string sessionId, string content, CancellationToken cancellationToken = default)
@@ -91,6 +98,25 @@ public sealed class OutboundQueueTests
                 ? Behavior(sessionId, content)
                 : Task.FromResult(new ChatMessage(null, sessionId, "assistant", "ok", null, null, null, null, null, null));
         }
+
+        public Task<ChatMessage> SendChatWithImageAsync(
+            string sessionId, string text, ChatImageAttachment image, CancellationToken cancellationToken = default)
+        {
+            lock (SentWithImage)
+            {
+                SentWithImage.Add((sessionId, text, image));
+            }
+
+            return Task.FromResult(new ChatMessage(null, sessionId, "assistant", "saw-it", null, null, null, null, null, null));
+        }
+
+        public IAsyncEnumerable<SseEvent> StreamChatEventsWithImageAsync(
+            string sessionId, string text, ChatImageAttachment image, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<ArtifactDownload> DownloadArtifactWithProgressAsync(
+            string artifactId, IProgress<ArtifactDownloadProgress>? progress, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         public Task<SessionPage> GetSessionsPageAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default)
@@ -299,5 +325,53 @@ public sealed class OutboundQueueTests
         await flusher.FlushAsync();
 
         Assert.Empty(client.Sent);
+    }
+
+    [Fact]
+    public async Task FlushSendsImageMessageThroughImagePath()
+    {
+        var (queue, client, flusher) = await SetUpAsync();
+        var jpeg = new byte[] { 0xFF, 0xD8, 0xFF };
+        await queue.EnqueueAsync("s1", "look", new ChatImageAttachment(jpeg, "image/jpeg"));
+
+        await flusher.FlushAsync();
+
+        Assert.Empty(client.Sent);
+        var sent = Assert.Single(client.SentWithImage);
+        Assert.Equal("s1", sent.SessionId);
+        Assert.Equal("look", sent.Content);
+        Assert.Equal(jpeg, sent.Image.Data);
+        Assert.Equal("image/jpeg", sent.Image.MimeType);
+        Assert.Equal(0, await queue.CountAsync());
+    }
+
+    [Fact]
+    public async Task FlushReportsProgressPerMessage()
+    {
+        var (queue, _, flusher) = await SetUpAsync();
+        await queue.EnqueueAsync("s1", "one");
+        await queue.EnqueueAsync("s1", "two");
+
+        var progress = new List<(int Completed, int Total)>();
+        flusher.Progress += (_, e) => progress.Add((e.Completed, e.Total));
+
+        await flusher.FlushAsync();
+
+        Assert.Equal([(0, 2), (1, 2), (2, 2)], progress);
+    }
+
+    [Fact]
+    public async Task ImageAttachmentRoundTripsThroughQueuedMessage()
+    {
+        var queue = (await SetUpAsync()).Queue;
+        var jpeg = new byte[] { 0xFF, 0xD8, 0xFF };
+
+        var queued = await queue.EnqueueAsync("s1", "look", new ChatImageAttachment(jpeg, "image/png"));
+
+        var attachment = queued.ImageAttachment;
+        Assert.NotNull(attachment);
+        Assert.Equal(jpeg, attachment.Data);
+        Assert.Equal("image/png", attachment.MimeType);
+        Assert.StartsWith("data:image/png;base64,", attachment.ToDataUrl());
     }
 }

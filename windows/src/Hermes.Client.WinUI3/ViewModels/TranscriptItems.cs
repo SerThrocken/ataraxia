@@ -13,6 +13,11 @@ public abstract partial class TranscriptItem : ObservableObject
 public sealed partial class UserMessageItem : TranscriptItem
 {
     public required string Text { get; init; }
+
+    /// <summary>Photo sent with this message (null for text-only).</summary>
+    public BitmapImage? Image { get; init; }
+
+    public bool HasImage => Image is not null;
 }
 
 public sealed partial class AssistantMessageItem : TranscriptItem
@@ -46,6 +51,25 @@ public sealed partial class ToolMessageItem : TranscriptItem
 }
 
 /// <summary>
+/// A tool call that produced file diffs (parsed from its <c>inline_diff</c>).
+/// Renders a read-only diff with a button that opens the per-hunk review
+/// dialog. Only added when the gateway actually sent diffs — never empty.
+/// </summary>
+public sealed partial class DiffItem : TranscriptItem
+{
+    public required string ToolCallId { get; init; }
+
+    public string? ToolName { get; init; }
+
+    public int FileCount { get; init; }
+
+    public required IDiffSource DiffSource { get; init; }
+
+    public string Summary =>
+        $"{(string.IsNullOrWhiteSpace(ToolName) ? "Tool" : ToolName)} changed {FileCount} file{(FileCount == 1 ? "" : "s")}.";
+}
+
+/// <summary>
 /// An outbound message held in the durable queue because the gateway was
 /// unreachable. Shows the message text plus its queue state; a failed send
 /// surfaces its error with a retry button.
@@ -63,6 +87,12 @@ public sealed partial class QueuedMessageItem : TranscriptItem
     public QueuedMessage Message { get; }
 
     public string Text => Message.Text;
+
+    /// <summary>Photo-only queued messages show a caption instead of blank text.</summary>
+    public string DisplayText =>
+        string.IsNullOrEmpty(Message.Text) && HasImage ? "Photo" : Message.Text;
+
+    public bool HasImage => Message.ImageAttachment is not null;
 
     [ObservableProperty]
     public partial string Status { get; set; } = "Queued — will send on reconnect.";
