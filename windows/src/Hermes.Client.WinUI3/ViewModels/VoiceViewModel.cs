@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Hermes.Client.Core;
 using Hermes.Client.Infrastructure;
 
 namespace Hermes.Client.WinUI3.ViewModels;
