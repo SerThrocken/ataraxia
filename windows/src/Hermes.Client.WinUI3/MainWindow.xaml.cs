@@ -27,6 +27,11 @@ public sealed partial class MainWindow : Window, ICommandPaletteHost
     public static void NavigateToChat(string sessionId, string? title) =>
         _current?.ContentFrame.Navigate(typeof(ChatPage), (sessionId, title));
 
+    /// <summary>Owner HWND for file pickers and dialogs (WinUI3 pickers require one).</summary>
+    public static nint WindowHandle => _current is null
+        ? 0
+        : WindowNative.GetWindowHandle(_current);
+
     /// <summary>
     /// Opens Mission Control, tracking the run when a run id is given
     /// (toast deep link). Safe to call before the window is ready.
@@ -257,10 +262,14 @@ public sealed partial class MainWindow : Window, ICommandPaletteHost
             "terminal" => typeof(TerminalBackendsPage),
             "voice" => typeof(VoicePage),
             "memory" => typeof(MemoryPage),
+            "messaging" => typeof(MessagingPage),
+            "profiles" => typeof(ProfilesPage),
             "health" => typeof(HealthPage),
             "analytics" => typeof(AnalyticsPage),
             "providers" => typeof(ProviderHealthPage),
             "diagnostics" => typeof(DiagnosticsPage),
+            "backup" => typeof(BackupPage),
+            "updates" => typeof(UpdatesPage),
             "settings" => typeof(SettingsPage),
             _ => typeof(ChatPage),
         };
