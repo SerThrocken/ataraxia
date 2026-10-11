@@ -7,7 +7,7 @@
     xmlns:controls="using:Hermes.Client.WinUI3.Controls"
     xmlns:core="using:Hermes.Client.Core"
     mc:Ignorable="d"
-    Title="Hermes">
+    Title="Ataraxia">
 
     <Grid>
         <Grid.KeyboardAccelerators>
