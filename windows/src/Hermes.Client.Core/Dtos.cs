@@ -15,7 +15,11 @@ public sealed record Session(
     [property: JsonConverter(typeof(EpochDateTimeOffsetConverter))] DateTimeOffset? StartedAt,
     [property: JsonConverter(typeof(EpochDateTimeOffsetConverter))] DateTimeOffset? EndedAt,
     bool Pinned,
-    bool Archived);
+    bool Archived,
+    long InputTokens = 0,
+    long OutputTokens = 0,
+    double? EstimatedCostUsd = null,
+    string? ParentSessionId = null);
 
 public sealed record SessionPage(
     [property: JsonPropertyName("data")] IReadOnlyList<Session> Sessions,

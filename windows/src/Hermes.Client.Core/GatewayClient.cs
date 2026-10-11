@@ -11,7 +11,7 @@ namespace Hermes.Client.Core;
 /// <see cref="GatewayClientBase"/>; the legacy abstract members are implemented
 /// here in terms of the same shared plumbing. No HTTP/auth code is duplicated.
 /// </summary>
-public sealed class GatewayClient : GatewayClientBase
+public sealed partial class GatewayClient : GatewayClientBase
 {
     public GatewayClient(HttpClient httpClient, GatewayOptions options)
         : base(httpClient, options)

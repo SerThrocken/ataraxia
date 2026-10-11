@@ -12,7 +12,7 @@ namespace Hermes.Client.Core;
 /// Chat-surface members are concrete here so every implementation shares them;
 /// the legacy abstract members are implemented by <see cref="GatewayClient"/>.
 /// </summary>
-public abstract class GatewayClientBase : IGatewayClient
+public abstract partial class GatewayClientBase : IGatewayClient
 {
     protected static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -61,7 +61,26 @@ public abstract class GatewayClientBase : IGatewayClient
     public abstract IAsyncEnumerable<string> StreamChatAsync(string sessionId, string content, CancellationToken cancellationToken = default);
     public abstract Task<IReadOnlyList<ModelInfo>> GetModelsAsync(CancellationToken cancellationToken = default);
     public abstract Task<IReadOnlyList<SkillInfo>> GetSkillsAsync(CancellationToken cancellationToken = default);
+    public abstract Task<IReadOnlyList<ToolsetInfo>> GetToolsetsAsync(CancellationToken cancellationToken = default);
     public abstract Task<bool> CheckHealthAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// GET /api/sessions/{id}. Response envelope is <c>{"object": "hermes.session",
+    /// "session": {...}}</c> (verified against gateway source, 2026-10-11) —
+    /// the same envelope POST /api/sessions returns, so <see cref="SessionCreateResponse"/>
+    /// is reused. Null when the gateway answers 200 with an empty body.
+    /// </summary>
+    public virtual async Task<Session?> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        using var response = await Http.GetAsync(
+                $"api/sessions/{Uri.EscapeDataString(sessionId)}", cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(json)
+            ? null
+            : JsonSerializer.Deserialize<SessionCreateResponse>(json, Json)?.Session;
+    }
 
     /// <summary>GET /api/sessions with limit/offset pagination.</summary>
     public virtual async Task<SessionPage> GetSessionsPageAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default)
