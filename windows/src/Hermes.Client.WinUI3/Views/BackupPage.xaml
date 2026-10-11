@@ -1,0 +1,55 @@
+<Page
+    x:Class="Hermes.Client.WinUI3.Views.BackupPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    AutomationProperties.Name="Backup">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="24" Spacing="12" MaxWidth="920" HorizontalAlignment="Left">
+            <TextBlock Text="Backup" Style="{StaticResource TitleTextBlockStyle}" />
+
+            <InfoBar Severity="Informational"
+                     IsOpen="True"
+                     IsClosable="False"
+                     Message="{x:Bind ViewModel.Notice}"
+                     AutomationProperties.Name="Backup notice" />
+
+            <TextBlock Text="{x:Bind ViewModel.GatewayDetail}"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
+
+            <TextBlock Text="Client settings backup"
+                       Style="{StaticResource SubtitleTextBlockStyle}" />
+
+            <TextBlock Text="{x:Bind ViewModel.LocalDetail}"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Export settings…"
+                        Click="ExportButton_Click"
+                        AutomationProperties.Name="Export client settings to a file"
+                        ToolTipService.ToolTip="Write the connection settings and API key to a JSON file" />
+                <Button Content="Import settings…"
+                        Click="ImportButton_Click"
+                        AutomationProperties.Name="Import client settings from a file"
+                        ToolTipService.ToolTip="Restore the connection settings and API key from a backup file" />
+                <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                              Width="20" Height="20"
+                              AutomationProperties.Name="Backup in progress" />
+            </StackPanel>
+
+            <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.Name="Backup status" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

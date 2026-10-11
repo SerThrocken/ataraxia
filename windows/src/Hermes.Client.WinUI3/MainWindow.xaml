@@ -103,6 +103,16 @@
                         <SymbolIcon Symbol="Save" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="Messaging" Tag="messaging">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Comment" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Profiles" Tag="profiles">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Contact" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Content="Health" Tag="health">
                     <NavigationViewItem.Icon>
                         <!-- Heart is not a Symbol enum member (WMC0055); Like verified at compile time. -->
@@ -122,6 +132,16 @@
                 <NavigationViewItem Content="Diagnostics" Tag="diagnostics">
                     <NavigationViewItem.Icon>
                         <SymbolIcon Symbol="Repair" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Backup" Tag="backup">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Save" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Updates" Tag="updates">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Refresh" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Settings" Tag="settings">

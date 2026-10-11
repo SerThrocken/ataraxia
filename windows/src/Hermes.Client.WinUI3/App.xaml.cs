@@ -55,6 +55,8 @@ public partial class App : Application
         services.AddTransient<TerminalBackendsViewModel>();
         services.AddTransient<VoiceViewModel>();
         services.AddTransient<MemoryViewModel>();
+        services.AddTransient<MessagingViewModel>();
+        services.AddTransient<ProfilesViewModel>();
         services.AddTransient<CronViewModel>();
 
         // Gold ops dashboards (Ataraxia worker C): transient view models for
@@ -63,6 +65,17 @@ public partial class App : Application
         services.AddTransient<AnalyticsViewModel>();
         services.AddTransient<ProviderHealthViewModel>();
         services.AddTransient<DiagnosticsViewModel>();
+
+        // Backup/restore (worker F): the gateway exposes no backup API, so
+        // the page backs up this client's own settings blob + API key via
+        // the versioned ClientSettingsBackup (Core, unit-tested).
+        services.AddTransient(sp => new ClientSettingsBackup(
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<ISecretStore>(),
+            SettingsViewModel.SettingsName,
+            SettingsViewModel.ApiKeySecretName));
+        services.AddTransient<BackupViewModel>();
+        services.AddTransient<UpdatesViewModel>();
 
         // Session handoff QR (Ataraxia worker E): in-memory single-use token
         // store (singleton — outstanding tokens outlive any one page),
