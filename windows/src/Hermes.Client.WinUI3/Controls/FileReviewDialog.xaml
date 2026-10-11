@@ -1,0 +1,21 @@
+<ContentDialog
+    x:Class="Hermes.Client.WinUI3.Controls.FileReviewDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Hermes.Client.WinUI3.Controls"
+    mc:Ignorable="d"
+    Title="Review file changes"
+    CloseButtonText="Done"
+    DefaultButton="Close"
+    AutomationProperties.Name="Review file changes dialog">
+
+    <StackPanel Spacing="8" MinWidth="480">
+        <InfoBar x:Name="ResultBar" IsOpen="False" IsClosable="True"
+                 AutomationProperties.Name="Export result" />
+        <ScrollViewer MaxHeight="560" VerticalScrollBarVisibility="Auto">
+            <controls:DiffViewer x:Name="Viewer" IsReviewMode="True" />
+        </ScrollViewer>
+    </StackPanel>
+</ContentDialog>
