@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:core="using:Hermes.Client.Core"
+    xmlns:viewmodels="using:Hermes.Client.WinUI3.ViewModels"
     xmlns:controls="using:Hermes.Client.WinUI3.Controls"
     mc:Ignorable="d"
     AutomationProperties.Name="Sessions">
@@ -40,36 +41,61 @@
                    TextWrapping="Wrap"
                    AutomationProperties.Name="Sessions error" />
 
-        <ListView Grid.Row="2"
-                  ItemsSource="{x:Bind ViewModel.Sessions, Mode=OneWay}"
-                  SelectionMode="Single"
-                  SelectionChanged="Sessions_SelectionChanged"
-                  AutomationProperties.Name="Sessions list">
-            <ListView.ItemTemplate>
-                <DataTemplate x:DataType="core:Session">
-                    <StackPanel Padding="4,10"
-                                AutomationProperties.Name="{x:Bind Title}">
-                        <TextBlock Text="{x:Bind Title}"
-                                   Style="{StaticResource SubtitleTextBlockStyle}"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{x:Bind Preview}"
-                                   Style="{StaticResource BodyTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   MaxLines="2" TextTrimming="CharacterEllipsis"
-                                   TextWrapping="Wrap" />
-                        <TextBlock Text="{x:Bind Converter={StaticResource SessionMetaConverter}}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                    </StackPanel>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
+        <Pivot Grid.Row="2" Grid.RowSpan="2" AutomationProperties.Name="Sessions views">
+            <PivotItem Header="List" AutomationProperties.Name="Sessions list view">
+                <Grid RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-        <Button Grid.Row="3"
-                Content="Load more"
-                Command="{x:Bind ViewModel.LoadMoreCommand}"
-                Visibility="{x:Bind ViewModel.LoadMoreVisible, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
-                AutomationProperties.Name="Load more sessions"
-                HorizontalAlignment="Center" />
+                    <ListView Grid.Row="0"
+                              ItemsSource="{x:Bind ViewModel.Sessions, Mode=OneWay}"
+                              SelectionMode="Single"
+                              SelectionChanged="Sessions_SelectionChanged"
+                              AutomationProperties.Name="Sessions list">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="core:Session">
+                                <StackPanel Padding="4,10"
+                                            AutomationProperties.Name="{x:Bind Title}">
+                                    <TextBlock Text="{x:Bind Title}"
+                                               Style="{StaticResource SubtitleTextBlockStyle}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{x:Bind Preview}"
+                                               Style="{StaticResource BodyTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               MaxLines="2" TextTrimming="CharacterEllipsis"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{x:Bind Converter={StaticResource SessionMetaConverter}}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <Button Grid.Row="1"
+                            Content="Load more"
+                            Command="{x:Bind ViewModel.LoadMoreCommand}"
+                            Visibility="{x:Bind ViewModel.LoadMoreVisible, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                            AutomationProperties.Name="Load more sessions"
+                            HorizontalAlignment="Center" />
+                </Grid>
+            </PivotItem>
+
+            <PivotItem Header="Fork tree" AutomationProperties.Name="Session fork tree view">
+                <TreeView ItemsSource="{x:Bind ViewModel.ForkRoots, Mode=OneWay}"
+                          ItemInvoked="ForkTree_ItemInvoked"
+                          AutomationProperties.Name="Session fork tree">
+                    <TreeView.ItemTemplate>
+                        <DataTemplate x:DataType="viewmodels:ForkNode">
+                            <TreeViewItem ItemsSource="{x:Bind Children, Mode=OneWay}"
+                                          Content="{x:Bind DisplayTitle}"
+                                          AutomationProperties.Name="{x:Bind DisplayTitle}" />
+                        </DataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+            </PivotItem>
+        </Pivot>
     </Grid>
 </Page>

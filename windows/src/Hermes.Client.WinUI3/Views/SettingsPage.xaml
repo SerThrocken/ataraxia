@@ -15,13 +15,16 @@
                        Style="{StaticResource BodyStrongTextBlockStyle}" />
 
             <TextBox Header="Gateway URL"
+                     AutomationProperties.Name="Gateway URL"
                      Text="{x:Bind ViewModel.BaseUrl, Mode=TwoWay}" />
             <Button Content="Use loopback (this machine instead)"
+                    AutomationProperties.Name="Use loopback address, this machine instead"
                     Command="{x:Bind ViewModel.UseLoopbackCommand}"
                     Style="{StaticResource TextButtonStyle}"
                     HorizontalAlignment="Left" />
 
             <PasswordBox Header="API key"
+                         AutomationProperties.Name="API key"
                          Password="{x:Bind ViewModel.ApiKey, Mode=TwoWay}" />
             <TextBlock Text="{x:Bind ViewModel.KeyStatusText, Mode=OneWay}"
                        Style="{StaticResource CaptionTextBlockStyle}"
@@ -33,11 +36,18 @@
 
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button Content="Test connection"
-                        Command="{x:Bind ViewModel.TestConnectionCommand}" />
+                        AutomationProperties.Name="Test connection"
+                        Command="{x:Bind ViewModel.TestConnectionCommand}">
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Enter" />
+                    </Button.KeyboardAccelerators>
+                </Button>
                 <Button Content="Save"
+                        AutomationProperties.Name="Save connection settings"
                         Command="{x:Bind ViewModel.SaveCommand}" />
             </StackPanel>
             <TextBlock Text="{x:Bind ViewModel.TestResult, Mode=OneWay}"
+                       AutomationProperties.LiveSetting="Assertive"
                        Style="{StaticResource BodyTextBlockStyle}"
                        TextWrapping="Wrap" />
             <TextBlock Text="{x:Bind ViewModel.CapabilitySummary, Mode=OneWay}"
@@ -45,8 +55,19 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        TextWrapping="Wrap" />
             <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}"
+                       AutomationProperties.LiveSetting="Assertive"
                        Style="{StaticResource BodyTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+            <TextBlock Text="Import" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock Text="Copy a saved connection and desktop settings from the Hermes desktop app (Electron). API keys go straight into encrypted Windows storage."
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
+            <Button Content="Import from Hermes Desktop…"
+                    AutomationProperties.Name="Import from Hermes Desktop"
+                    Click="ImportButton_Click"
+                    HorizontalAlignment="Left" />
         </StackPanel>
     </ScrollViewer>
 </Page>

@@ -34,4 +34,12 @@ public sealed partial class SessionsPage : Page
         list.SelectedItem = null; // allow re-selecting the same session
         MainWindow.NavigateToChat(session.Id, session.Title);
     }
+
+    private void ForkTree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItem is ForkNode node)
+        {
+            MainWindow.NavigateToChat(node.Session.Id, node.DisplayTitle);
+        }
+    }
 }

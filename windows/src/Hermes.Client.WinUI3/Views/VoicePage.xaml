@@ -1,0 +1,44 @@
+<Page
+    x:Class="Hermes.Client.WinUI3.Views.VoicePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <StackPanel Padding="24" Spacing="12" MaxWidth="920" HorizontalAlignment="Left">
+        <TextBlock Text="Voice" Style="{StaticResource TitleTextBlockStyle}" />
+
+        <InfoBar Severity="Informational"
+                 IsOpen="True"
+                 IsClosable="False"
+                 Message="{x:Bind ViewModel.Notice}"
+                 AutomationProperties.Name="Voice notice" />
+
+        <ToggleSwitch Header="Voice input"
+                      IsOn="{x:Bind ViewModel.VoiceInputEnabled, Mode=TwoWay}"
+                      AutomationProperties.Name="Voice input" />
+        <ToggleSwitch Header="Voice output"
+                      IsOn="{x:Bind ViewModel.VoiceOutputEnabled, Mode=TwoWay}"
+                      AutomationProperties.Name="Voice output" />
+
+        <TextBlock Text="Text-to-speech voice" Style="{StaticResource SubtitleTextBlockStyle}" />
+        <TextBox Text="{x:Bind ViewModel.TtsVoiceName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 PlaceholderText="e.g. Lessac"
+                 Width="280"
+                 HorizontalAlignment="Left"
+                 AutomationProperties.Name="Text-to-speech voice name" />
+
+        <TextBlock Text="Microphone device" Style="{StaticResource SubtitleTextBlockStyle}" />
+        <TextBox Text="{x:Bind ViewModel.MicrophoneDevice, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 PlaceholderText="Default microphone"
+                 Width="280"
+                 HorizontalAlignment="Left"
+                 AutomationProperties.Name="Microphone device" />
+
+        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   Text="Saved automatically." />
+    </StackPanel>
+</Page>

@@ -4,12 +4,112 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewmodels="using:Hermes.Client.WinUI3.ViewModels"
+    xmlns:core="using:Hermes.Client.Core"
+    xmlns:controls="using:Hermes.Client.WinUI3.Controls"
     mc:Ignorable="d">
 
-    <StackPanel Padding="24" Spacing="12">
-        <TextBlock Text="Skills" Style="{StaticResource TitleTextBlockStyle}" />
-        <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}"
-                   Style="{StaticResource BodyTextBlockStyle}"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-    </StackPanel>
+    <Page.Resources>
+        <controls:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <controls:ToolsetStatusConverter x:Key="ToolsetStatus" />
+    </Page.Resources>
+
+    <ScrollViewer>
+        <StackPanel Padding="24" Spacing="12" MaxWidth="920" HorizontalAlignment="Left">
+            <TextBlock Text="Skills" Style="{StaticResource TitleTextBlockStyle}" />
+
+            <InfoBar Severity="Warning"
+                     IsOpen="{x:Bind ViewModel.SkillsNoticeVisible, Mode=OneWay}"
+                     Message="{x:Bind ViewModel.SkillsNotice, Mode=OneWay}"
+                     AutomationProperties.Name="Skills notice" />
+
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Text="Installed skills"
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           VerticalAlignment="Center" />
+                <Button Content="Refresh"
+                        Command="{x:Bind ViewModel.RefreshCommand}"
+                        AutomationProperties.Name="Refresh skills" />
+                <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                              Width="20" Height="20"
+                              AutomationProperties.Name="Loading skills" />
+            </StackPanel>
+
+            <TextBlock Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap"
+                       Text="The gateway exposes no skill on/off switch (verified on 0.21.6): hiding a skill is local to this client and only dims it here." />
+
+            <ListView ItemsSource="{x:Bind ViewModel.Skills, Mode=OneWay}"
+                      SelectedItem="{x:Bind ViewModel.SelectedSkill, Mode=TwoWay}"
+                      SelectionMode="Single"
+                      MaxHeight="320"
+                      AutomationProperties.Name="Installed skills">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="viewmodels:SkillRow">
+                        <Grid ColumnDefinitions="*,Auto" Padding="0,6" ColumnSpacing="12">
+                            <StackPanel>
+                                <TextBlock Text="{x:Bind Name}"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Text="{x:Bind Description}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1"
+                                          IsOn="{x:Bind IsHidden, Mode=TwoWay}"
+                                          OnContent="Hidden"
+                                          OffContent="Shown"
+                                          AutomationProperties.Name="{x:Bind Name}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <TextBlock Text="{x:Bind ViewModel.SkillDetail, Mode=OneWay}"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="Skill details"
+                       AutomationProperties.LiveSetting="Polite" />
+
+            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap"
+                       Text="No skill hub: the gateway exposes no hub or install route (0.21.6, verified 2026-10-11)." />
+
+            <TextBlock Text="Toolsets"
+                       Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap"
+                       Text="Server-side tool bundles (GET /v1/toolsets). The enabled flag is read-only: the gateway exposes no toolset toggle route." />
+
+            <ListView ItemsSource="{x:Bind ViewModel.Toolsets, Mode=OneWay}"
+                      SelectionMode="None"
+                      AutomationProperties.Name="Toolsets">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="core:ToolsetInfo">
+                        <StackPanel Padding="0,6" Spacing="2">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}">
+                                <Run Text="{x:Bind Name}" /><Run Text=" — " /><Run Text="{x:Bind Label}" />
+                            </TextBlock>
+                            <TextBlock Text="{x:Bind Description}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{x:Bind Converter={StaticResource ToolsetStatus}}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <TextBlock Text="{x:Bind ViewModel.Error, Mode=OneWay}"
+                       Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="Skills error" />
+        </StackPanel>
+    </ScrollViewer>
 </Page>
