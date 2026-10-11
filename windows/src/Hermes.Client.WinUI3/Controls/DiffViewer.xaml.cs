@@ -47,7 +47,7 @@ internal sealed partial class HunkRow : ObservableObject
     {
         _review = review;
         Index = index;
-        _state = review.GetState(index);
+        State = review.GetState(index);
         review.StateChanged += OnReviewStateChanged;
     }
 
@@ -58,9 +58,9 @@ internal sealed partial class HunkRow : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StateText))]
     [NotifyPropertyChangedFor(nameof(StateName))]
-    private HunkReview _state;
+    public partial HunkReview State { get; set; }
 
-    public string StateText => _state switch
+    public string StateText => State switch
     {
         HunkReview.Accepted => "Accepted",
         HunkReview.Rejected => "Rejected",
