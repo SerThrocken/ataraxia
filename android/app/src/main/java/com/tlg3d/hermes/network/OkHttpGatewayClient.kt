@@ -76,6 +76,19 @@ class OkHttpGatewayClient(
         http.newCall(request).execute().use { return it.isSuccessful }
     }
 
+    override suspend fun healthLatencyMs(): Long? {
+        val start = System.currentTimeMillis()
+        return try {
+            val request = Request.Builder().url("$base/health").get().build()
+            http.newCall(request).execute().use {
+                if (!it.isSuccessful) return null
+                System.currentTimeMillis() - start
+            }
+        } catch (e: Exception) {
+            null // unreachable gateway: the widget shows "unreachable", not a stack trace
+        }
+    }
+
     override suspend fun listSessions(limit: Int): List<Session> {
         val body = get("/api/sessions?limit=$limit")
         return HermesJson.decodeFromString<ListEnvelope<Session>>(body).data
@@ -111,10 +124,26 @@ class OkHttpGatewayClient(
         message: String,
         onEvent: (StreamEvent) -> Unit,
     ) {
-        val payload = buildJsonObject { put("message", message) }
+        streamWithPayload(sessionId, buildChatMessageJson(message, emptyList()), onEvent)
+    }
+
+    override suspend fun streamChatImages(
+        sessionId: String,
+        text: String,
+        images: List<ChatImageAttachment>,
+        onEvent: (StreamEvent) -> Unit,
+    ) {
+        streamWithPayload(sessionId, buildChatMessageJson(text, images), onEvent)
+    }
+
+    private suspend fun streamWithPayload(
+        sessionId: String,
+        payloadJson: String,
+        onEvent: (StreamEvent) -> Unit,
+    ) {
         val request = Request.Builder()
             .url("$base/api/sessions/$sessionId/chat/stream")
-            .post(HermesJson.encodeToString(payload).toRequestBody(JSON_MEDIA_TYPE))
+            .post(payloadJson.toRequestBody(JSON_MEDIA_TYPE))
             .header("Accept", "text/event-stream")
             .apply { authHeader()?.let { header("Authorization", it) } }
             .build()
@@ -231,6 +260,23 @@ class OkHttpGatewayClient(
             if (requestId != null) put("request_id", requestId)
         }
         post("/v1/runs/$runId/approval", HermesJson.encodeToString(payload))
+    }
+
+    override suspend fun getRun(runId: String): RunStatus {
+        val body = get("/v1/runs/$runId")
+        return HermesJson.decodeFromString<RunStatus>(body)
+    }
+
+    override suspend fun steerRun(runId: String, message: String): Boolean {
+        val payload = buildJsonObject { put("message", message) }
+        val body = post("/v1/runs/$runId/steer", HermesJson.encodeToString(payload))
+        return HermesJson.decodeFromString<SteerResponse>(body).accepted
+    }
+
+    override suspend fun stopRun(runId: String): RunStatus {
+        // Empty object body: the endpoint needs no payload (RUNS-API.md).
+        val body = post("/v1/runs/$runId/stop", "{}")
+        return HermesJson.decodeFromString<RunStatus>(body)
     }
 
     // -- HTTP plumbing -------------------------------------------------------
