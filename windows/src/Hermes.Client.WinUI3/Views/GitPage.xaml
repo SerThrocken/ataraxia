@@ -1,0 +1,218 @@
+<Page
+    x:Class="Hermes.Client.WinUI3.Views.GitPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:core="using:Hermes.Client.Core"
+    xmlns:git="using:Hermes.Client.Core.Git"
+    xmlns:vm="using:Hermes.Client.WinUI3.ViewModels"
+    xmlns:controls="using:Hermes.Client.WinUI3.Controls"
+    mc:Ignorable="d"
+    AutomationProperties.Name="Git">
+
+    <Page.Resources>
+        <controls:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <controls:DiffLineKindToBrushConverter x:Key="DiffKindToBrush" />
+        <controls:DiffLineKindToSignConverter x:Key="DiffLineKindToSign" />
+
+        <DataTemplate x:Key="DiffLineTemplate" x:DataType="core:DiffLine">
+            <TextBlock FontFamily="Consolas" TextWrapping="Wrap"
+                       Foreground="{x:Bind Kind, Converter={StaticResource DiffKindToBrush}}"
+                       AutomationProperties.Name="{x:Bind Text}">
+                <Run Text="{x:Bind Kind, Converter={StaticResource DiffLineKindToSign}}" /><Run Text="{x:Bind Text}" />
+            </TextBlock>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Repository picker + refresh -->
+        <StackPanel Grid.Row="0" Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <TextBlock Text="Git" Style="{StaticResource TitleTextBlockStyle}" />
+                <Button Content="Open repository…"
+                        Click="OnBrowseClick"
+                        IsEnabled="{x:Bind ViewModel.GitAvailable, Mode=OneWay}"
+                        AutomationProperties.Name="Open repository"
+                        ToolTipService.ToolTip="Pick a folder containing a git working tree" />
+                <Button Content="Refresh"
+                        Command="{x:Bind ViewModel.RefreshCommand}"
+                        IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
+                        AutomationProperties.Name="Refresh git status" />
+                <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                              Width="20" Height="20"
+                              AutomationProperties.Name="Git operation running" />
+                <Button Content="Cancel"
+                        Command="{x:Bind ViewModel.CancelCommand}"
+                        Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                        AutomationProperties.Name="Cancel git operation" />
+            </StackPanel>
+            <TextBlock Text="{x:Bind ViewModel.RepoPath, Mode=OneWay}"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       FontFamily="Consolas"
+                       AutomationProperties.Name="Repository path" />
+            <InfoBar Severity="Warning"
+                     IsOpen="{x:Bind ViewModel.GitMissing, Mode=OneWay}"
+                     Title="git not found"
+                     Message="No git executable was found on PATH. Install Git for Windows and restart Ataraxia — repository state is never faked."
+                     AutomationProperties.Name="Git not found warning" />
+            <TextBlock Text="{x:Bind ViewModel.Error, Mode=OneWay}"
+                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                       TextWrapping="Wrap"
+                       Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                       AutomationProperties.Name="Git error"
+                       AutomationProperties.LiveSetting="Assertive" />
+            <TextBlock Text="{x:Bind ViewModel.ProgressText, Mode=OneWay}"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       AutomationProperties.Name="Git progress"
+                       AutomationProperties.LiveSetting="Polite" />
+        </StackPanel>
+
+        <!-- Branch row -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <TextBlock Text="Branch:" VerticalAlignment="Center"
+                       Style="{StaticResource BodyStrongTextBlockStyle}" />
+            <TextBlock Text="{x:Bind ViewModel.BranchDisplay, Mode=OneWay}"
+                       VerticalAlignment="Center" FontFamily="Consolas"
+                       AutomationProperties.Name="Current branch" />
+            <ComboBox ItemsSource="{x:Bind ViewModel.Branches, Mode=OneWay}"
+                      SelectedItem="{x:Bind ViewModel.SelectedBranch, Mode=TwoWay}"
+                      MinWidth="220" MaxWidth="340"
+                      AutomationProperties.Name="Branches">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="git:GitBranch">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{x:Bind Name}" FontFamily="Consolas" />
+                            <TextBlock Text="{x:Bind ShortSha}" FontFamily="Consolas"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="{x:Bind Subject}" TextTrimming="CharacterEllipsis"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button Content="Switch"
+                    Command="{x:Bind ViewModel.SwitchBranchCommand}"
+                    IsEnabled="{x:Bind ViewModel.CanSwitchBranch, Mode=OneWay}"
+                    AutomationProperties.Name="Switch to selected branch"
+                    ToolTipService.ToolTip="Switch to the selected local branch" />
+            <TextBox Text="{x:Bind ViewModel.NewBranchName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     PlaceholderText="New branch name"
+                     MinWidth="160"
+                     AutomationProperties.Name="New branch name" />
+            <Button Content="Create"
+                    Command="{x:Bind ViewModel.CreateBranchCommand}"
+                    IsEnabled="{x:Bind ViewModel.CanCreateBranch, Mode=OneWay}"
+                    AutomationProperties.Name="Create branch" />
+            <TextBlock Text="{x:Bind ViewModel.GitVersion, Mode=OneWay}"
+                       VerticalAlignment="Center"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       AutomationProperties.Name="Git version" />
+        </StackPanel>
+
+        <!-- Files + diff -->
+        <Grid Grid.Row="2" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="220" />
+                <ColumnDefinition Width="2*" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Stage selected"
+                            Command="{x:Bind ViewModel.StageSelectedCommand}"
+                            IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
+                            AutomationProperties.Name="Stage selected files" />
+                    <Button Content="Unstage selected"
+                            Command="{x:Bind ViewModel.UnstageSelectedCommand}"
+                            IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
+                            AutomationProperties.Name="Unstage selected files" />
+                </StackPanel>
+                <ListView ItemsSource="{x:Bind ViewModel.Files, Mode=OneWay}"
+                          SelectionMode="Single"
+                          SelectionChanged="OnFileSelectionChanged"
+                          AutomationProperties.Name="{x:Bind ViewModel.ScreenReaderStatus, Mode=OneWay}"
+                          AutomationProperties.LiveSetting="Polite">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:GitFileRow">
+                            <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                                      AutomationProperties.Name="{x:Bind ScreenReaderName, Mode=OneWay}">
+                                <StackPanel Spacing="0">
+                                    <TextBlock Text="{x:Bind DisplayPath, Mode=OneWay}"
+                                               FontFamily="Consolas" TextWrapping="Wrap" />
+                                    <TextBlock Text="{x:Bind Summary, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </CheckBox>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </StackPanel>
+
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{x:Bind ViewModel.DiffFiles, Mode=OneWay}"
+                              AutomationProperties.Name="File diff">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="core:DiffFile">
+                            <Expander IsExpanded="True" HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Stretch" Margin="0,0,0,8">
+                                <Expander.Header>
+                                    <TextBlock Text="{x:Bind NewPath}" FontFamily="Consolas"
+                                               AutomationProperties.Name="{x:Bind NewPath}" />
+                                </Expander.Header>
+                                <ItemsControl ItemsSource="{x:Bind Hunks}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="core:DiffHunk">
+                                            <StackPanel Spacing="0" Margin="0,0,0,8">
+                                                <TextBlock Text="{x:Bind Header}" FontFamily="Consolas"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           AutomationProperties.Name="{x:Bind Header}" />
+                                                <ItemsControl ItemsSource="{x:Bind Lines}"
+                                                              ItemTemplate="{StaticResource DiffLineTemplate}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Commit + push/pull -->
+        <StackPanel Grid.Row="3" Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBox Text="{x:Bind ViewModel.CommitMessage, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         PlaceholderText="Commit message"
+                         MinWidth="320"
+                         AutomationProperties.Name="Commit message" />
+                <Button Content="Commit"
+                        Command="{x:Bind ViewModel.CommitCommand}"
+                        IsEnabled="{x:Bind ViewModel.CanCommit, Mode=OneWay}"
+                        AutomationProperties.Name="Commit staged changes" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Pull"
+                        Command="{x:Bind ViewModel.PullCommand}"
+                        IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
+                        AutomationProperties.Name="Pull from remote" />
+                <Button Content="Push"
+                        Command="{x:Bind ViewModel.PushCommand}"
+                        IsEnabled="{x:Bind ViewModel.CanOperate, Mode=OneWay}"
+                        AutomationProperties.Name="Push to remote" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Page>
