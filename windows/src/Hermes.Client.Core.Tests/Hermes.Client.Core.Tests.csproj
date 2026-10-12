@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- net10.0-windows: the test project references Hermes.Client.Infrastructure
+         (DPAPI round-trip tests), which is Windows-only. The Acer build machine
+         is Windows, so tests run there. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <RootNamespace>Hermes.Client.Core.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
