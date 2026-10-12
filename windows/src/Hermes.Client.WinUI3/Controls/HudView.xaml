@@ -1,0 +1,79 @@
+<UserControl
+    x:Class="Hermes.Client.WinUI3.Controls.HudView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Hermes.Client.WinUI3.Controls"
+    mc:Ignorable="d"
+    AutomationProperties.Name="Ataraxia companion overlay">
+
+    <UserControl.Resources>
+        <controls:HudDotKindToBrushConverter x:Key="HudDotToBrush" />
+        <controls:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+    </UserControl.Resources>
+
+    <Border Background="{ThemeResource LayerFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="1" CornerRadius="8" Padding="10,8">
+        <Border.KeyboardAccelerators>
+            <KeyboardAccelerator Key="Escape" Invoked="EscapeAccelerator_Invoked" />
+        </Border.KeyboardAccelerators>
+
+        <StackPanel Spacing="6">
+            <!-- Drag handle + title + close -->
+            <Grid x:Name="HeaderGrid" Background="Transparent"
+                  AutomationProperties.Name="Overlay title bar. Drag to move.">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="ATARAXIA" VerticalAlignment="Center"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Button Grid.Column="1" Content="&#xE711;"
+                        FontFamily="Segoe MDL2 Assets" FontSize="10"
+                        Padding="8,4" MinWidth="0" MinHeight="0"
+                        AutomationProperties.Name="Close companion overlay"
+                        ToolTipService.ToolTip="Close overlay (Esc)"
+                        Style="{StaticResource TextButtonStyle}"
+                        Command="{x:Bind ViewModel.CloseHudCommand}" />
+            </Grid>
+
+            <!-- Gateway status -->
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Ellipse Width="10" Height="10" VerticalAlignment="Center"
+                         Fill="{x:Bind ViewModel.DotKind, Mode=OneWay, Converter={StaticResource HudDotToBrush}}"
+                         AutomationProperties.Name="Connection status indicator" />
+                <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           AutomationProperties.Name="Gateway connection status"
+                           AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+
+            <!-- Active run -->
+            <TextBlock Text="{x:Bind ViewModel.RunText, Mode=OneWay}"
+                       Visibility="{x:Bind ViewModel.HasActiveRun, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextTrimming="CharacterEllipsis"
+                       AutomationProperties.Name="Active agent run" />
+
+            <!-- Quick actions: same handlers as the tray menu -->
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button Content="New chat"
+                        FontSize="12" Padding="8,4"
+                        AutomationProperties.Name="Start a new chat"
+                        Command="{x:Bind ViewModel.NewChatCommand}" />
+                <Button Content="Main window"
+                        FontSize="12" Padding="8,4"
+                        AutomationProperties.Name="Show or hide the main window"
+                        Command="{x:Bind ViewModel.ToggleMainWindowCommand}" />
+                <Button Content="Mission Control"
+                        FontSize="12" Padding="8,4"
+                        AutomationProperties.Name="Open Mission Control"
+                        Command="{x:Bind ViewModel.OpenMissionControlCommand}" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</UserControl>
