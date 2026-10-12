@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive-icon monochrome layer (Android 13+ themed icons). Vector (text-safe)
+  replacement for the PNG that could not be pushed through the text-only file
+  API. Single-color rendition of the Ataraxia mark.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M82,48 A28,28 0 1,1 26,48 A28,28 0 1,1 82,48 Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M20,80h68" />
+</vector>
