@@ -36,12 +36,14 @@ public sealed class TrayService : IDisposable
 
     /// <summary>
     /// Creates the tray icon. Must run on the UI thread; call once at launch.
+    /// Pass <paramref name="toggleHud"/> to add the companion-HUD toggle item.
     /// </summary>
     public void Start(
         Action toggleWindow,
         Func<Task> newChat,
         Action missionControl,
-        Action quit)
+        Action quit,
+        Action? toggleHud = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_icon is not null)
@@ -50,11 +52,17 @@ public sealed class TrayService : IDisposable
         }
 
         // Flat menu: PopupMenu has no submenus by design (upstream limit), so
-        // the menu stays flat — Show/Hide, New chat, Mission Control, Quit.
+        // the menu stays flat — Show/Hide, New chat, Mission Control,
+        // Companion HUD (Phase 4, opt-in), Quit.
         var menu = new PopupMenu();
         menu.Items.Add(new PopupMenuItem("Show/Hide window", (_, _) => toggleWindow()));
         menu.Items.Add(new PopupMenuItem("New chat", async (_, _) => await newChat()));
         menu.Items.Add(new PopupMenuItem("Mission Control", (_, _) => missionControl()));
+        if (toggleHud is not null)
+        {
+            menu.Items.Add(new PopupMenuItem("Companion HUD", (_, _) => toggleHud()));
+        }
+
         menu.Items.Add(new PopupMenuSeparator());
         menu.Items.Add(new PopupMenuItem("Quit Ataraxia", (_, _) => quit()));
 

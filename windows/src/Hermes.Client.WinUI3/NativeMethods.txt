@@ -3,3 +3,28 @@ UnregisterHotKey
 SetWindowSubclass
 RemoveWindowSubclass
 DefSubclassProc
+// ConPTY interactive terminal (Terminal/ConPtyBackend.cs): pseudoconsole,
+// pipes, child process spawn with the pseudo-console thread attribute,
+// and a job object so closing the session kills the whole process tree.
+CreatePseudoConsole
+ResizePseudoConsole
+ClosePseudoConsole
+CreatePipe
+SetHandleInformation
+CreateProcess
+InitializeProcThreadAttributeList
+UpdateProcThreadAttribute
+DeleteProcThreadAttributeList
+ReadFile
+WriteFile
+CloseHandle
+TerminateProcess
+GetExitCodeProcess
+CreateJobObject
+SetInformationJobObject
+AssignProcessToJobObject
+GetWindowLongPtr
+SetWindowLongPtr
+SetWindowPos
+ShowWindow
+SetLayeredWindowAttributes

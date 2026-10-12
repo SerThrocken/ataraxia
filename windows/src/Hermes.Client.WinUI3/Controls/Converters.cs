@@ -75,6 +75,31 @@ public sealed class CronJobMetaConverter : IValueConverter
 /// waiting_for_approval → caution, active states → attention, else neutral.
 /// Brushes come from theme resources so high-contrast themes track automatically.
 /// </summary>
+/// <summary>
+/// Companion-HUD status dot → theme brush: connected → success, active run →
+/// caution (the amber family, like the run-status converter), unreachable →
+/// critical. Theme resources only, so high-contrast themes track.
+/// </summary>
+public sealed class HudDotKindToBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var key = value switch
+        {
+            Core.HudDotKind.Ok => "SystemFillColorSuccessBrush",
+            Core.HudDotKind.Working => "SystemFillColorCautionBrush",
+            Core.HudDotKind.Error => "SystemFillColorCriticalBrush",
+            _ => "SystemFillColorNeutralBrush",
+        };
+        return Application.Current.Resources.TryGetValue(key, out var brush)
+            ? brush
+            : Application.Current.Resources["SystemFillColorNeutralBrush"];
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        throw new NotSupportedException();
+}
+
 public sealed class RunStatusToBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)

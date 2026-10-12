@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Hermes.Client.Core;
 using Hermes.Client.Infrastructure;
 using Hermes.Client.WinUI3.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hermes.Client.WinUI3.ViewModels;
 
@@ -34,6 +35,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>Settings-blob name for the tray + global-hotkey settings.</summary>
     public const string TraySettingsName = "tray";
+
+    /// <summary>Settings-blob name for the companion-HUD settings (Phase 4).</summary>
+    public const string HudSettingsName = "hud";
 
     private readonly ISettingsService _settings;
     private readonly ISecretStore _secrets;
@@ -77,6 +81,28 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string HotkeyStatus { get; set; } = string.Empty;
 
+    /// <summary>Companion-HUD master switch (opt-in; the overlay starts hidden).</summary>
+    [ObservableProperty]
+    public partial bool HudEnabled { get; set; }
+
+    /// <summary>Companion-HUD opacity, 35–100.</summary>
+    [ObservableProperty]
+    public partial double HudOpacityPercent { get; set; } = HudSettings.DefaultOpacity * 100;
+
+    /// <summary>Companion-HUD click-through (mouse clicks pass through).</summary>
+    [ObservableProperty]
+    public partial bool HudClickThrough { get; set; }
+
+    /// <summary>Companion-HUD global toggle hotkey, e.g. "Ctrl+Shift+H".</summary>
+    [ObservableProperty]
+    public partial string HudHotkeyText { get; set; } = string.Empty;
+
+    /// <summary>Status line under the HUD section.</summary>
+    [ObservableProperty]
+    public partial string HudStatus { get; set; } = string.Empty;
+
+    private bool _loadingHud;
+
     public event EventHandler? ContinueRequested;
 
     public SettingsViewModel(
@@ -113,6 +139,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             : "No API key saved yet.";
 
         await InitializeTrayAsync();
+        await InitializeHudAsync();
     }
 
     /// <summary>
@@ -155,6 +182,110 @@ public sealed partial class SettingsViewModel : ObservableObject
         var saved = await _settings.LoadAsync<TraySettings>(TraySettingsName) ?? new TraySettings();
         await _settings.SaveAsync(TraySettingsName, saved with { Hotkey = binding.ToString() });
         HotkeyStatus = $"Global hotkey set to {binding}.";
+    }
+
+    /// <summary>
+    /// Loads the companion-HUD settings and registers the saved toggle
+    /// hotkey. A conflict is reported in <see cref="HudStatus"/> — never a
+    /// crash, never silent.
+    /// </summary>
+    private async Task InitializeHudAsync()
+    {
+        _loadingHud = true;
+        try
+        {
+            var saved = await _settings.LoadAsync<HudSettings>(HudSettingsName);
+            if (saved is null)
+            {
+                return;
+            }
+
+            var normalized = saved.Normalized();
+            HudEnabled = normalized.Enabled;
+            HudOpacityPercent = normalized.Opacity * 100;
+            HudClickThrough = normalized.ClickThrough;
+            HudHotkeyText = normalized.Hotkey;
+            RegisterHudHotkey(normalized.Hotkey);
+        }
+        finally
+        {
+            _loadingHud = false;
+        }
+    }
+
+    private bool RegisterHudHotkey(string hotkeyText)
+    {
+        if (string.IsNullOrWhiteSpace(hotkeyText))
+        {
+            return true;
+        }
+
+        if (_hotkeys is not GlobalHotkeyService registrar)
+        {
+            return true;
+        }
+
+        if (!HotkeyBinding.TryParse(hotkeyText, out var binding) || binding is null)
+        {
+            HudStatus = $"Saved HUD hotkey \"{hotkeyText}\" didn't parse — set it again below.";
+            return false;
+        }
+
+        if (!registrar.TryRegisterHud(binding, out var error))
+        {
+            HudStatus = error ?? "Couldn't register the HUD hotkey.";
+            return false;
+        }
+
+        return true;
+    }
+
+    partial void OnHudEnabledChanged(bool value)
+    {
+        if (_loadingHud)
+        {
+            return;
+        }
+
+        _ = ApplyHudEnabledAsync(value);
+    }
+
+    private async Task ApplyHudEnabledAsync(bool value)
+    {
+        var hud = App.Services.GetService<HudService>();
+        if (hud is null)
+        {
+            HudStatus = "HUD service isn't available.";
+            return;
+        }
+
+        await hud.SetEnabledAsync(value);
+        HudStatus = value ? "Companion HUD shown." : "Companion HUD hidden.";
+    }
+
+    /// <summary>
+    /// Saves opacity, click-through, and the toggle hotkey; appearance
+    /// applies live to a visible overlay.
+    /// </summary>
+    [RelayCommand]
+    private async Task ApplyHudAsync()
+    {
+        var hud = App.Services.GetService<HudService>();
+        if (hud is null)
+        {
+            HudStatus = "HUD service isn't available.";
+            return;
+        }
+
+        var opacity = HudSettings.ClampOpacity(HudOpacityPercent / 100.0);
+        HudOpacityPercent = opacity * 100;
+
+        await hud.ApplyAppearanceAsync(opacity, HudClickThrough);
+        await hud.SetHotkeyAsync(HudHotkeyText);
+        if (RegisterHudHotkey(HudHotkeyText))
+        {
+            HudStatus = "HUD settings saved.";
+        }
     }
 
     [RelayCommand]

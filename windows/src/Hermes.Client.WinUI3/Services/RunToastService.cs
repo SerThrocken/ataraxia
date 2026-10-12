@@ -29,6 +29,13 @@ public sealed class RunToastService
     public event EventHandler<ApprovalRequestedEventArgs>? ApprovalRequested;
 
     /// <summary>
+    /// Raised from the same trigger point as the completion toast (Phase 4):
+    /// the companion HUD subscribes here to stop tracking finished runs, so
+    /// the two surfaces can never drift apart.
+    /// </summary>
+    public event EventHandler<RunStatus>? RunCompleted;
+
+    /// <summary>
     /// Urgent toast for a pending dangerous-command approval. The buttons
     /// resolve via <c>POST /v1/runs/{id}/approval</c> (choices
     /// <c>once</c>/<c>deny</c>, keyed by run id + request id).
@@ -58,6 +65,7 @@ public sealed class RunToastService
     public void ShowCompleted(RunStatus status)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(status.RunId);
+        RunCompleted?.Invoke(this, status);
         var headline = status.Status switch
         {
             "completed" => "Run completed",

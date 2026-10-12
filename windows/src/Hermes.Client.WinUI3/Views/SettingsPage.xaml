@@ -77,6 +77,33 @@
                        Style="{StaticResource BodyTextBlockStyle}"
                        TextWrapping="Wrap" />
 
+            <TextBlock Text="Companion HUD" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock Text="A small always-on-top overlay with gateway status, the active run, and quick actions. It never takes focus, never appears in the taskbar, and never shows up unless you turn it on."
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
+            <CheckBox Content="Show companion HUD"
+                      AutomationProperties.Name="Show companion HUD"
+                      IsChecked="{x:Bind ViewModel.HudEnabled, Mode=TwoWay}" />
+            <Slider Header="Opacity" Minimum="35" Maximum="100" StepFrequency="1"
+                    AutomationProperties.Name="Companion HUD opacity"
+                    Value="{x:Bind ViewModel.HudOpacityPercent, Mode=TwoWay}" />
+            <CheckBox Content="Click-through (mouse clicks pass through the overlay)"
+                      AutomationProperties.Name="Companion HUD click-through"
+                      IsChecked="{x:Bind ViewModel.HudClickThrough, Mode=TwoWay}" />
+            <TextBox Header="Toggle hotkey"
+                     AutomationProperties.Name="Companion HUD toggle hotkey"
+                     Text="{x:Bind ViewModel.HudHotkeyText, Mode=TwoWay}"
+                     PlaceholderText="Ctrl+Shift+H" />
+            <Button Content="Apply HUD settings"
+                    AutomationProperties.Name="Apply companion HUD settings"
+                    Command="{x:Bind ViewModel.ApplyHudCommand}"
+                    HorizontalAlignment="Left" />
+            <TextBlock Text="{x:Bind ViewModel.HudStatus, Mode=OneWay}"
+                       AutomationProperties.LiveSetting="Polite"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       TextWrapping="Wrap" />
+
             <TextBlock Text="Import" Style="{StaticResource SubtitleTextBlockStyle}" />
             <TextBlock Text="Copy a saved connection and desktop settings from the Hermes desktop app (Electron). API keys go straight into encrypted Windows storage."
                        Style="{StaticResource BodyTextBlockStyle}"

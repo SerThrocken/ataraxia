@@ -88,9 +88,19 @@
                         <SymbolIcon Symbol="AllApps" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Terminal" Tag="terminal">
+                <NavigationViewItem Content="Terminal backends" Tag="terminal">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" FontFamily="Segoe MDL2 Assets" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Terminal" Tag="terminalpty">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE756;" FontFamily="Segoe MDL2 Assets" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Git" Tag="git">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Sync" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Voice" Tag="voice">

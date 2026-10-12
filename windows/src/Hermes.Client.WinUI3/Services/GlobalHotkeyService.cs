@@ -18,6 +18,7 @@ namespace Hermes.Client.WinUI3.Services;
 public sealed class GlobalHotkeyService : IHotkeyRegistrar
 {
     private const int HotkeyId = 1;
+    private const int HudHotkeyId = 2;
     private const nuint SubclassId = 1;
     private const uint WmHotkey = 0x0312; // documented WM_HOTKEY value
 
@@ -32,13 +33,30 @@ public sealed class GlobalHotkeyService : IHotkeyRegistrar
 
     public event EventHandler? Pressed;
 
+    /// <summary>
+    /// Fires when the companion-HUD toggle hotkey is pressed (Phase 4).
+    /// A second hotkey id on the same subclassed window — one proc, two ids.
+    /// </summary>
+    public event EventHandler? HudPressed;
+
     public GlobalHotkeyService()
     {
         _subclassProc = SubclassProc;
         _current = this;
     }
 
-    public bool TryRegister(HotkeyBinding binding, out string? error)
+    public bool TryRegister(HotkeyBinding binding, out string? error) =>
+        TryRegisterInternal(binding, HotkeyId, out error);
+
+    /// <summary>
+    /// Registers the companion-HUD toggle hotkey (Phase 4). Same semantics as
+    /// <see cref="TryRegister"/>: re-registration swaps the binding, conflicts
+    /// report a message instead of throwing.
+    /// </summary>
+    public bool TryRegisterHud(HotkeyBinding binding, out string? error) =>
+        TryRegisterInternal(binding, HudHotkeyId, out error);
+
+    private bool TryRegisterInternal(HotkeyBinding binding, int hotkeyId, out string? error)
     {
         ArgumentNullException.ThrowIfNull(binding);
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -64,10 +82,10 @@ public sealed class GlobalHotkeyService : IHotkeyRegistrar
 
         // Re-registration replaces the old binding; unregister first so a
         // changed combo never leaves a stale registration behind.
-        _ = PInvoke.UnregisterHotKey(_hwnd, HotkeyId);
+        _ = PInvoke.UnregisterHotKey(_hwnd, hotkeyId);
 
         var (modifiers, vk) = binding.ToRegisterHotKeyArgs();
-        if (PInvoke.RegisterHotKey(_hwnd, HotkeyId, (HOT_KEY_MODIFIERS)modifiers, vk))
+        if (PInvoke.RegisterHotKey(_hwnd, hotkeyId, (HOT_KEY_MODIFIERS)modifiers, vk))
         {
             error = null;
             return true;
@@ -88,6 +106,7 @@ public sealed class GlobalHotkeyService : IHotkeyRegistrar
         }
 
         _ = PInvoke.UnregisterHotKey(_hwnd, HotkeyId);
+        _ = PInvoke.UnregisterHotKey(_hwnd, HudHotkeyId);
     }
 
     public void Dispose()
@@ -116,7 +135,17 @@ public sealed class GlobalHotkeyService : IHotkeyRegistrar
     {
         if (uMsg == WmHotkey)
         {
-            _current?.Pressed?.Invoke(_current, EventArgs.Empty);
+            // wParam carries the hotkey id: 2 is the HUD toggle, anything
+            // else is the quick-entry hotkey.
+            if ((int)wParam.Value == HudHotkeyId)
+            {
+                _current?.HudPressed?.Invoke(_current, EventArgs.Empty);
+            }
+            else
+            {
+                _current?.Pressed?.Invoke(_current, EventArgs.Empty);
+            }
+
             return new LRESULT(0);
         }
 

@@ -1,5 +1,6 @@
 using Hermes.Client.Core;
 using Hermes.Client.WinUI3.Services;
+using Hermes.Client.WinUI3.Terminal;
 using Hermes.Client.WinUI3.ViewModels;
 using Hermes.Client.WinUI3.Views;
 using Microsoft.Extensions.DependencyInjection;
@@ -79,7 +80,13 @@ public sealed partial class MainWindow : Window, ICommandPaletteHost
             WindowNative.GetWindowHandle(this),
             App.Services.GetRequiredService<TaskbarProgressTracker>(),
             DispatcherQueue);
-        Closed += (_, _) => _taskbarProgress.Dispose();
+        Closed += (_, _) =>
+        {
+            _taskbarProgress.Dispose();
+            // Kill the PTY child process tree, close the pseudoconsole and
+            // release every handle: no orphaned shells, no leaked handles.
+            App.Services.GetRequiredService<TerminalSessionHost>().Dispose();
+        };
 
         // Window-chrome icon (unpackaged apps get no manifest icon).
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "ataraxia.ico");
@@ -316,6 +323,8 @@ public sealed partial class MainWindow : Window, ICommandPaletteHost
             "models" => typeof(ModelsPage),
             "skills" => typeof(SkillsPage),
             "terminal" => typeof(TerminalBackendsPage),
+            "terminalpty" => typeof(TerminalPage),
+            "git" => typeof(GitPage),
             "voice" => typeof(VoicePage),
             "memory" => typeof(MemoryPage),
             "messaging" => typeof(MessagingPage),
