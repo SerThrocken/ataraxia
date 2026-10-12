@@ -42,7 +42,7 @@ public sealed class ConPtyBackend : ITerminalBackend
     [StructLayout(LayoutKind.Sequential)]
     private struct STARTUPINFOEX
     {
-        public STARTUPINFO StartupInfo;
+        public STARTUPINFOW StartupInfo;
         public IntPtr lpAttributeList;
     }
 
