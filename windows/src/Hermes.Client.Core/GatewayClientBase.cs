@@ -13,7 +13,7 @@ namespace Hermes.Client.Core;
 /// Chat-surface members are concrete here so every implementation shares them;
 /// the legacy abstract members are implemented by <see cref="GatewayClient"/>.
 /// </summary>
-public abstract partial class GatewayClientBase : IGatewayClient
+public abstract partial class GatewayClientBase : IGatewayClient, IGatewayEndpoint
 {
     protected static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {

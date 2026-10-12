@@ -14,6 +14,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Hermes.Client.Core\Hermes.Client.Core.csproj" />
+    <!-- For the DPAPI round-trip tests (DpapiSecretStoreTests). Guarded to
+         Windows at runtime; the reference itself is TFM-compatible. -->
+    <ProjectReference Include="..\Hermes.Client.Infrastructure\Hermes.Client.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
