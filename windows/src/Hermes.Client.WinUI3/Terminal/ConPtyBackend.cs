@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Hermes.Client.Core.Terminal;
+using Microsoft.Win32.SafeHandles;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.Security;
@@ -21,8 +22,8 @@ namespace Hermes.Client.WinUI3.Terminal;
 /// attribute. The child is placed in a job object with
 /// <c>KILL_ON_JOB_CLOSE</c> so disposing the session kills the whole
 /// process tree — no orphaned shells. Output is pumped on a dedicated
-/// reader thread; exit is signaled by a wait on the process handle and by
-/// the pipe breaking, whichever comes first (once-only).
+/// reader thread; exit is signaled by the process Exited event and by the
+/// pipe breaking, whichever comes first (once-only).
 /// </summary>
 public sealed class ConPtyBackend : ITerminalBackend
 {
@@ -35,14 +36,60 @@ public sealed class ConPtyBackend : ITerminalBackend
     private const uint StillActive = 259;
     private static readonly nuint ProcThreadAttributePseudoConsole = 0x00020016; // 22 | PROC_THREAD_ATTRIBUTE_INPUT
 
-    private HANDLE _inputWrite; // our end: we write the child's stdin
-    private HANDLE _outputRead; // our end: we read the child's stdout
-    private HPCON _pseudoConsole;
-    private HANDLE _process;
-    private HANDLE _thread;
+    // STARTUPINFOEX is not emitted by CsWin32 (CreateProcess only references
+    // STARTUPINFO), so the two-field extension is defined here from the
+    // documented layout.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct STARTUPINFOEX
+    {
+        public STARTUPINFO StartupInfo;
+        public IntPtr lpAttributeList;
+    }
+
+    // Likewise not emitted (SetInformationJobObject takes void*): minimal
+    // definitions from the documented layouts; only LimitFlags is ever set.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct JOBOBJECT_BASIC_LIMIT_INFORMATION
+    {
+        public long PerProcessUserTimeLimit;
+        public long PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public nuint MinimumWorkingSetSize;
+        public nuint MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public nuint Affinity;
+        public uint PriorityClass;
+        public uint SchedulingClass;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IO_COUNTERS
+    {
+        public ulong ReadOperationCount;
+        public ulong WriteOperationCount;
+        public ulong OtherOperationCount;
+        public ulong ReadTransferCount;
+        public ulong WriteTransferCount;
+        public ulong OtherTransferCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+    {
+        public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+        public IO_COUNTERS IoInfo;
+        public nuint ProcessMemoryLimit;
+        public nuint JobMemoryLimit;
+        public nuint PeakProcessMemoryUsed;
+        public nuint PeakJobMemoryUsed;
+    }
+
+    private SafeFileHandle? _inputWrite; // our end: we write the child's stdin
+    private SafeFileHandle? _outputRead; // our end: we read the child's stdout
+    private ClosePseudoConsoleSafeHandle? _pseudoConsole;
+    private HANDLE _process; // raw: kept for TerminateProcess/GetExitCodeProcess
     private HANDLE _job;
     private Process? _watchedProcess;
-    private RegisteredWaitHandle? _exitWait;
     private Thread? _readerThread;
     private int _exitSignaled;
     private int _disposed;
@@ -59,9 +106,11 @@ public sealed class ConPtyBackend : ITerminalBackend
             throw new InvalidOperationException("Backend already started.");
         }
 
-        HANDLE inputRead = default, inputWrite = default;
-        HANDLE outputRead = default, outputWrite = default;
-        HPCON hpc = default;
+        SafeFileHandle? inputRead = null;
+        SafeFileHandle? inputWrite = null;
+        SafeFileHandle? outputRead = null;
+        SafeFileHandle? outputWrite = null;
+        ClosePseudoConsoleSafeHandle? hpc = null;
         void* attrList = null;
         PROCESS_INFORMATION pi = default;
 
@@ -100,21 +149,23 @@ public sealed class ConPtyBackend : ITerminalBackend
             }
 
             nuint attrSize = 0;
-            _ = PInvoke.InitializeProcThreadAttributeList(null, 1, 0, &attrSize);
+            _ = PInvoke.InitializeProcThreadAttributeList(default, 1, 0, &attrSize);
             attrList = NativeMemory.Alloc(attrSize);
-            if (!PInvoke.InitializeProcThreadAttributeList((LPPROC_THREAD_ATTRIBUTE_LIST)attrList, 1, 0, &attrSize))
+            var attrListTyped = new LPPROC_THREAD_ATTRIBUTE_LIST(attrList);
+            if (!PInvoke.InitializeProcThreadAttributeList(attrListTyped, 1, 0, &attrSize))
             {
                 Win32Throw("InitializeProcThreadAttributeList");
             }
 
-            var siex = new STARTUPINFOEXW
+            var siex = new STARTUPINFOEX
             {
-                StartupInfo = { cb = (uint)sizeof(STARTUPINFOEXW) },
-                lpAttributeList = (PPROC_THREAD_ATTRIBUTE_LIST)attrList,
+                StartupInfo = { cb = (uint)sizeof(STARTUPINFO) },
+                lpAttributeList = (IntPtr)attrList,
             };
+            var hpcHandle = hpc.DangerousGetHandle();
             if (!PInvoke.UpdateProcThreadAttribute(
-                    (LPPROC_THREAD_ATTRIBUTE_LIST)attrList, 0, ProcThreadAttributePseudoConsole,
-                    &hpc, (nuint)sizeof(HPCON), null, null))
+                    attrListTyped, 0, ProcThreadAttributePseudoConsole,
+                    &hpcHandle, (nuint)sizeof(nint), null, null))
             {
                 Win32Throw("UpdateProcThreadAttribute");
             }
@@ -123,13 +174,14 @@ public sealed class ConPtyBackend : ITerminalBackend
             var commandLine = string.IsNullOrWhiteSpace(arguments) ? fileName : fileName + " " + arguments;
             var cmdChars = commandLine.ToCharArray();
             fixed (char* cmdPtr = cmdChars)
+            fixed (STARTUPINFOEX* siexPtr = &siex)
             {
                 if (!PInvoke.CreateProcess(
                         default, new PWSTR(cmdPtr),
-                        (SECURITY_ATTRIBUTES*)null, (SECURITY_ATTRIBUTES*)null, true,
+                        null, null, true,
                         (PROCESS_CREATION_FLAGS)(ExtendedStartupinfoPresent | CreateUnicodeEnvironment),
-                        (void*)null, default,
-                        (STARTUPINFOW*)&siex, &pi))
+                        null, default,
+                        (STARTUPINFO*)siexPtr, &pi))
                 {
                     Win32Throw("CreateProcess");
                 }
@@ -137,22 +189,26 @@ public sealed class ConPtyBackend : ITerminalBackend
 
             // Adopted: the pseudoconsole now owns the child's pipe ends.
             _pseudoConsole = hpc;
-            hpc = default;
+            hpc = null;
             _process = pi.hProcess;
-            _thread = pi.hThread;
             _inputWrite = inputWrite;
-            inputWrite = default;
+            inputWrite = null;
             _outputRead = outputRead;
-            outputRead = default;
-            PInvoke.CloseHandle(inputRead);
-            inputRead = default;
-            PInvoke.CloseHandle(outputWrite);
-            outputWrite = default;
+            outputRead = null;
+            inputRead?.Dispose();
+            inputRead = null;
+            outputWrite?.Dispose();
+            outputWrite = null;
+            // pi.hThread is not needed; close it now.
+            if (!pi.hThread.IsNull)
+            {
+                PInvoke.CloseHandle(pi.hThread);
+            }
 
             // Job object: closing it kills the whole tree (KILL_ON_JOB_CLOSE).
             // Best effort — if the process is already in a job this fails and
             // TerminateProcess still kills the direct child.
-            var job = PInvoke.CreateJobObject((SECURITY_ATTRIBUTES*)null, default);
+            var job = PInvoke.CreateJobObject(null, default);
             if (!job.IsNull)
             {
                 var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
@@ -169,12 +225,10 @@ public sealed class ConPtyBackend : ITerminalBackend
                 }
             }
 
-            // Prompt exit signal independent of the pipes.
+            // Exit signal independent of the pipes.
             _watchedProcess = Process.GetProcessById((int)pi.dwProcessId);
-            _exitWait = ThreadPool.RegisterWaitForSingleObject(
-                _watchedProcess.WaitHandle,
-                static (state, _) => ((ConPtyBackend)state!).OnProcessSignaled(),
-                this, Timeout.Infinite, executeOnlyOnce: true);
+            _watchedProcess.EnableRaisingEvents = true;
+            _watchedProcess.Exited += (_, _) => OnProcessSignaled();
 
             _readerThread = new Thread(ReaderLoop) { IsBackground = true, Name = "ConPTY output reader" };
             _readerThread.Start();
@@ -184,40 +238,21 @@ public sealed class ConPtyBackend : ITerminalBackend
         {
             if (attrList is not null)
             {
-                PInvoke.DeleteProcThreadAttributeList((LPPROC_THREAD_ATTRIBUTE_LIST)attrList);
+                PInvoke.DeleteProcThreadAttributeList(new LPPROC_THREAD_ATTRIBUTE_LIST(attrList));
                 NativeMemory.Free(attrList);
             }
 
             if (!_started)
             {
-                // Failure path: close everything not adopted above, plus
-                // anything adopted before the failure (e.g. CreateProcess
-                // succeeded but the exit-watch registration threw — the
-                // orphaned child must be killed, not leaked).
-                if (!inputRead.IsNull)
-                {
-                    PInvoke.CloseHandle(inputRead);
-                }
-
-                if (!inputWrite.IsNull)
-                {
-                    PInvoke.CloseHandle(inputWrite);
-                }
-
-                if (!outputRead.IsNull)
-                {
-                    PInvoke.CloseHandle(outputRead);
-                }
-
-                if (!outputWrite.IsNull)
-                {
-                    PInvoke.CloseHandle(outputWrite);
-                }
-
-                if (!hpc.IsNull)
-                {
-                    PInvoke.ClosePseudoConsole(hpc);
-                }
+                // Failure path: release everything not adopted above. Anything
+                // adopted before the failure (e.g. CreateProcess succeeded but
+                // the exit-watch registration threw) must also be cleaned up:
+                // the orphaned child is killed, not leaked.
+                inputRead?.Dispose();
+                inputWrite?.Dispose();
+                outputRead?.Dispose();
+                outputWrite?.Dispose();
+                hpc?.Dispose();
 
                 if (!pi.hProcess.IsNull)
                 {
@@ -230,40 +265,21 @@ public sealed class ConPtyBackend : ITerminalBackend
                     PInvoke.CloseHandle(pi.hThread);
                 }
 
-                _exitWait?.Unregister(null);
-                _exitWait = null;
                 _watchedProcess?.Dispose();
                 _watchedProcess = null;
 
-                if (!_pseudoConsole.IsNull)
-                {
-                    PInvoke.ClosePseudoConsole(_pseudoConsole);
-                    _pseudoConsole = default;
-                }
-
-                if (!_inputWrite.IsNull)
-                {
-                    PInvoke.CloseHandle(_inputWrite);
-                    _inputWrite = default;
-                }
-
-                if (!_outputRead.IsNull)
-                {
-                    PInvoke.CloseHandle(_outputRead);
-                    _outputRead = default;
-                }
+                _pseudoConsole?.Dispose();
+                _pseudoConsole = null;
+                _inputWrite?.Dispose();
+                _inputWrite = null;
+                _outputRead?.Dispose();
+                _outputRead = null;
 
                 if (!_process.IsNull)
                 {
                     PInvoke.TerminateProcess(_process, 1);
                     PInvoke.CloseHandle(_process);
                     _process = default;
-                }
-
-                if (!_thread.IsNull)
-                {
-                    PInvoke.CloseHandle(_thread);
-                    _thread = default;
                 }
 
                 if (!_job.IsNull)
@@ -277,7 +293,7 @@ public sealed class ConPtyBackend : ITerminalBackend
 
     public unsafe void WriteInput(ReadOnlySpan<byte> data)
     {
-        if (data.IsEmpty || _disposed != 0 || _inputWrite.IsNull)
+        if (data.IsEmpty || _disposed != 0 || _inputWrite is null || _inputWrite.IsInvalid)
         {
             return;
         }
@@ -301,7 +317,7 @@ public sealed class ConPtyBackend : ITerminalBackend
 
     public void Resize(int cols, int rows)
     {
-        if (_disposed != 0 || _pseudoConsole.IsNull)
+        if (_disposed != 0 || _pseudoConsole is null || _pseudoConsole.IsInvalid)
         {
             return;
         }
@@ -337,41 +353,24 @@ public sealed class ConPtyBackend : ITerminalBackend
         }
 
         Terminate();
-        _exitWait?.Unregister(null);
-        _exitWait = null;
 
         // Closing the output handle unblocks the reader thread's ReadFile.
-        if (!_outputRead.IsNull)
-        {
-            PInvoke.CloseHandle(_outputRead);
-            _outputRead = default;
-        }
+        _outputRead?.Dispose();
+        _outputRead = null;
 
         _readerThread?.Join(TimeSpan.FromSeconds(2));
         _readerThread = null;
 
-        if (!_inputWrite.IsNull)
-        {
-            PInvoke.CloseHandle(_inputWrite);
-            _inputWrite = default;
-        }
+        _inputWrite?.Dispose();
+        _inputWrite = null;
 
-        if (!_pseudoConsole.IsNull)
-        {
-            PInvoke.ClosePseudoConsole(_pseudoConsole);
-            _pseudoConsole = default;
-        }
+        _pseudoConsole?.Dispose();
+        _pseudoConsole = null;
 
         if (!_process.IsNull)
         {
             PInvoke.CloseHandle(_process);
             _process = default;
-        }
-
-        if (!_thread.IsNull)
-        {
-            PInvoke.CloseHandle(_thread);
-            _thread = default;
         }
 
         _watchedProcess?.Dispose();
@@ -386,10 +385,16 @@ public sealed class ConPtyBackend : ITerminalBackend
             while (true)
             {
                 uint read = 0;
+                var handle = _outputRead;
+                if (handle is null || handle.IsInvalid)
+                {
+                    break;
+                }
+
                 // Blocking read: returns FALSE with ERROR_BROKEN_PIPE when the
                 // child (and the console session) is gone, or when Dispose
                 // closes the handle to shut us down.
-                if (!PInvoke.ReadFile(_outputRead, p, (uint)buffer.Length, &read, null) || read == 0)
+                if (!PInvoke.ReadFile(handle, p, (uint)buffer.Length, &read, null) || read == 0)
                 {
                     break;
                 }

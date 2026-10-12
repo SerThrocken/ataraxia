@@ -214,7 +214,7 @@ public partial class App : Application
         // surfaces can't drift. Starts hidden unless the user opted in.
         _ = hud.InitializeAsync(
             newChat: MainWindow.NewChatAsync,
-            toggleWindow: MainWindow.ToggleVisibility,
+            toggleMainWindow: MainWindow.ToggleVisibility,
             openMissionControl: MainWindow.NavigateToMissionControl);
         if (Services.GetRequiredService<IHotkeyRegistrar>() is GlobalHotkeyService hotkeysConcrete)
         {

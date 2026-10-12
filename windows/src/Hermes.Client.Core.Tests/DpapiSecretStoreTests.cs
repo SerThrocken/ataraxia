@@ -22,7 +22,7 @@ public sealed class DpapiSecretStoreTests
         }
 
         var store = new DpapiSecretStore();
-        const string key = $"dpapi-test-{Guid.NewGuid():N}";
+        var key = $"dpapi-test-{Guid.NewGuid():N}";
         const string value = "super-secret-value-1234567890";
 
         try
