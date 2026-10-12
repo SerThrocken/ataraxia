@@ -205,18 +205,15 @@ public sealed class ConPtyBackend : ITerminalBackend
             // attribute list that follows it.
             var commandLine = string.IsNullOrWhiteSpace(arguments) ? fileName : fileName + " " + arguments;
             var cmdChars = commandLine.ToCharArray();
-            fixed (char* cmdPtr = cmdChars)
+            Span<char> cmdSpan = cmdChars;
+            if (!PInvoke.CreateProcess(
+                    default, ref cmdSpan,
+                    null, null, true,
+                    (PROCESS_CREATION_FLAGS)(ExtendedStartupinfoPresent | CreateUnicodeEnvironment),
+                    null, default,
+                    in siex.StartupInfo, out pi))
             {
-                var cmdWstr = new PWSTR(cmdPtr);
-                if (!PInvoke.CreateProcess(
-                        default, ref cmdWstr,
-                        null, null, true,
-                        (PROCESS_CREATION_FLAGS)(ExtendedStartupinfoPresent | CreateUnicodeEnvironment),
-                        null, default,
-                        in siex.StartupInfo, out pi))
-                {
-                    Win32Throw("CreateProcess");
-                }
+                Win32Throw("CreateProcess");
             }
 
             // Adopted: the pseudoconsole now owns the child's pipe ends.
@@ -336,7 +333,7 @@ public sealed class ConPtyBackend : ITerminalBackend
             while (offset < data.Length)
             {
                 uint written = 0;
-                if (!PInvoke.WriteFile(_inputWrite, p + offset, (uint)(data.Length - offset), &written, null)
+                if (!PInvoke.WriteFile(new HANDLE(_inputWrite.DangerousGetHandle()), p + offset, (uint)(data.Length - offset), &written, null)
                     || written == 0)
                 {
                     break; // pipe broken: the child is gone; exit gets signaled
@@ -426,7 +423,7 @@ public sealed class ConPtyBackend : ITerminalBackend
                 // Blocking read: returns FALSE with ERROR_BROKEN_PIPE when the
                 // child (and the console session) is gone, or when Dispose
                 // closes the handle to shut us down.
-                if (!PInvoke.ReadFile(handle, p, (uint)buffer.Length, &read, null) || read == 0)
+                if (!PInvoke.ReadFile(new HANDLE(handle.DangerousGetHandle()), p, (uint)buffer.Length, &read, null) || read == 0)
                 {
                     break;
                 }

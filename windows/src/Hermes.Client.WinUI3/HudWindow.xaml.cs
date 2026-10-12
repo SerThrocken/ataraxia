@@ -25,6 +25,14 @@ public sealed partial class HudWindow : Window
     // GWL_EXSTYLE (-20): WINDOW_LONG_PTR_INDEX is internal to CsWin32, so the
     // documented value is used directly.
     private const int GwlExStyle = -20;
+
+    // Declared explicitly: CsWin32 does not emit Get/SetWindowLongPtrW from
+    // NativeMethods.txt (the W-suffixed names don't match its metadata).
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern nint GetWindowLongPtrW(HWND hWnd, int nIndex);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern nint SetWindowLongPtrW(HWND hWnd, int nIndex, nint dwNewLong);
     private readonly HWND _hwnd;
     private readonly HudViewModel _viewModel;
     private bool _dragging;
@@ -52,11 +60,11 @@ public sealed partial class HudWindow : Window
         }
 
         // The never-disturb contract, applied before the first show.
-        var exStyle = (uint)PInvoke.GetWindowLongPtrW(_hwnd, GwlExStyle);
+        var exStyle = (uint)GetWindowLongPtrW(_hwnd, GwlExStyle);
         exStyle = HudNativeStyle.WithNoActivate(exStyle);
         exStyle = HudNativeStyle.WithLayered(exStyle);
         exStyle = HudNativeStyle.WithToolWindow(exStyle);
-        PInvoke.SetWindowLongPtrW(_hwnd, GwlExStyle, (nint)exStyle);
+        SetWindowLongPtrW(_hwnd, GwlExStyle, (nint)exStyle);
         PInvoke.SetWindowPos(
             _hwnd,
             HWND.Null,
@@ -117,8 +125,8 @@ public sealed partial class HudWindow : Window
 
     private void ApplyClickThrough(bool clickThrough)
     {
-        var exStyle = (uint)PInvoke.GetWindowLongPtrW(_hwnd, GwlExStyle);
-        PInvoke.SetWindowLongPtrW(
+        var exStyle = (uint)GetWindowLongPtrW(_hwnd, GwlExStyle);
+        SetWindowLongPtrW(
             _hwnd,
             GwlExStyle,
             (nint)HudNativeStyle.WithClickThrough(exStyle, clickThrough));
