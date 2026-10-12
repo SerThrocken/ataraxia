@@ -23,6 +23,7 @@ public static class GitErrorMapper
         }
 
         if (err.Contains("could not read Username", StringComparison.OrdinalIgnoreCase)
+            || err.Contains("could not read Password", StringComparison.OrdinalIgnoreCase)
             || err.Contains("Authentication failed", StringComparison.OrdinalIgnoreCase)
             || err.Contains("Invalid username or password", StringComparison.OrdinalIgnoreCase)
             || err.Contains("Permission denied (publickey)", StringComparison.OrdinalIgnoreCase)
@@ -40,7 +41,7 @@ public static class GitErrorMapper
             || err.Contains("Automatic merge failed", StringComparison.OrdinalIgnoreCase)
             || err.Contains("fix conflicts and then commit", StringComparison.OrdinalIgnoreCase))
         {
-            return new GitConflictException(FirstLine(err));
+            return new GitConflictException(ConflictLine(err));
         }
 
         return new GitCommandException(exitCode, command, err.Trim());
@@ -50,5 +51,20 @@ public static class GitErrorMapper
     {
         var line = text.Split('\n', 2)[0].Trim().TrimEnd('\r');
         return line.Length <= 300 ? line : line[..300] + "…";
+    }
+
+    private static string ConflictLine(string text)
+    {
+        // Surface the CONFLICT line itself, not the "Auto-merging" preamble.
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim().TrimEnd('\r');
+            if (line.Contains("CONFLICT", StringComparison.Ordinal))
+            {
+                return line.Length <= 300 ? line : line[..300] + "…";
+            }
+        }
+
+        return FirstLine(text);
     }
 }
