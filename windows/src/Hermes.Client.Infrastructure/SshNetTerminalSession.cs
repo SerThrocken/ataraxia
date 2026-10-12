@@ -123,7 +123,7 @@ public sealed class SshNetTerminalSession : ITerminalSession
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rows);
-        _shell?.ChangeWindowSize((uint)columns, (uint)rows);
+        _shell?.ChangeWindowSize((uint)columns, (uint)rows, (uint)columns, (uint)rows);
         return Task.CompletedTask;
     }
 
