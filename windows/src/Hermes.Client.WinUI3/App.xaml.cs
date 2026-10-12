@@ -1,6 +1,8 @@
 using Hermes.Client.Core;
+using Hermes.Client.Core.Git;
 using Hermes.Client.Infrastructure;
 using Hermes.Client.WinUI3.Services;
+using Hermes.Client.WinUI3.Terminal;
 using Hermes.Client.WinUI3.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -38,11 +40,28 @@ public partial class App : Application
         services.AddSingleton<IConnectionState, ConnectionStateService>();
         services.AddSingleton<ConnectionTester>();
 
+        // Phase 4 (Worker 4): multi-gateway connection registry + SSH host
+        // registry. The registry owns the active gateway; GatewaySwitcher
+        // points the shared client at it and tears down the old connection's
+        // live resources on switch, so no sessions/streams leak between
+        // gateways. SSH sessions go through SshNetTerminalSession behind the
+        // shared ITerminalSession contract (see TERMINAL-SEAM.md).
+        services.AddSingleton<GatewayConnectionRegistry>();
+        services.AddSingleton<SshHostRegistry>();
+        services.AddSingleton<GatewaySwitcher>();
+        services.AddSingleton<ISshHostKeyTrust, SettingsSshHostKeyTrust>();
+        services.AddSingleton<SshNetSessionFactory>();
+
         // Offline queue: durable JSONL store + FIFO flusher over
         // POST /api/sessions/{id}/chat. Singletons: the queue outlives any
         // one chat page, so nothing is lost across navigation or restarts.
         services.AddSingleton<IOutboundMessageQueue, FileOutboundMessageQueue>();
         services.AddSingleton<OutboundQueueFlusher>();
+
+        // Interactive PTY terminal (ConPTY): the session host is a singleton
+        // so the shell survives page navigation; MainWindow.Closed disposes
+        // it, killing the child process tree and closing the pseudoconsole.
+        services.AddSingleton<TerminalSessionHost>();
 
         // Camera-to-agent (WinRT MediaCapture, no new dependency) and the
         // UI-agnostic taskbar-progress tracker both live as singletons: the
@@ -68,6 +87,7 @@ public partial class App : Application
         services.AddTransient<ModelsViewModel>();
         services.AddTransient<SkillsViewModel>();
         services.AddTransient<TerminalBackendsViewModel>();
+        services.AddTransient<TerminalPageViewModel>();
         services.AddTransient<VoiceViewModel>();
         services.AddTransient<MemoryViewModel>();
         services.AddTransient<MessagingViewModel>();
@@ -134,6 +154,13 @@ public partial class App : Application
         services.AddSingleton<Services.RunToastService>();
         services.AddTransient<MissionControlViewModel>();
 
+        // Git integration (Phase 4): real git CLI via GitProcess, found on
+        // PATH with an honest error when absent. Singleton runner: process
+        // spawning is stateless. The per-navigation view model builds a
+        // GitService per opened repository.
+        services.AddSingleton<IGitRunner, GitProcess>();
+        services.AddTransient<GitViewModel>();
+
         // System tray (H.NotifyIcon.WinUI, MIT) and the global quick-entry
         // hotkey (Win32 RegisterHotKey via CsWin32). Both are singletons:
         // the tray icon and the hotkey registration outlive any one window.
@@ -141,6 +168,11 @@ public partial class App : Application
         // its hidden message window must be created there.
         services.AddSingleton<TrayService>();
         services.AddSingleton<IHotkeyRegistrar, GlobalHotkeyService>();
+
+        // Companion HUD (Phase 4, Windows-only): opt-in always-on-top overlay
+        // with gateway status, active-run state, and the tray menu's own quick
+        // actions. Singleton: one overlay for the app's lifetime.
+        services.AddSingleton<HudService>();
 
         Services = services.BuildServiceProvider();
 
@@ -160,20 +192,35 @@ public partial class App : Application
             (sender, toastArgs) => _ = HandleToastActivationAsync(toastArgs.Argument);
 
         // System tray: context menu (show/hide, new chat, Mission Control,
-        // quit). The approval balloon rides the toast service's trigger
-        // point, so both surfaces fire together.
+        // companion HUD, quit). The approval balloon rides the toast service's
+        // trigger point, so both surfaces fire together.
+        var hud = Services.GetRequiredService<HudService>();
         var tray = Services.GetRequiredService<TrayService>();
         tray.Start(
             toggleWindow: MainWindow.ToggleVisibility,
             newChat: MainWindow.NewChatAsync,
             missionControl: () => MainWindow.NavigateToMissionControl(),
-            quit: () => Application.Current.Exit());
+            quit: () => Application.Current.Exit(),
+            toggleHud: hud.Toggle);
         toasts.ApprovalRequested += (_, e) => tray.ShowApprovalBalloon(e.RunId, e.Request);
-        _window.Closed += (_, _) =>
+        _window.Closed += async (_, _) =>
         {
             tray.Dispose();
             Services.GetRequiredService<IHotkeyRegistrar>().Dispose();
+            await Services.GetRequiredService<HudService>().ShutdownAsync();
         };
+
+        // Companion HUD: same quick-action handlers as the tray menu, so the
+        // surfaces can't drift. Starts hidden unless the user opted in.
+        _ = hud.InitializeAsync(
+            newChat: MainWindow.NewChatAsync,
+            toggleWindow: MainWindow.ToggleVisibility,
+            openMissionControl: MainWindow.NavigateToMissionControl);
+        if (Services.GetRequiredService<IHotkeyRegistrar>() is GlobalHotkeyService hotkeysConcrete)
+        {
+            hotkeysConcrete.HudPressed += (_, _) =>
+                _window?.DispatcherQueue.TryEnqueue(hud.Toggle);
+        }
 
         // Global quick-entry hotkey: summon the box from anywhere. The
         // binding itself is registered by SettingsViewModel once the saved
@@ -271,16 +318,17 @@ public partial class App : Application
 
     private static async Task InitializeGatewayClientAsync(IServiceProvider services)
     {
-        var settings = services.GetRequiredService<ISettingsService>();
-        var secrets = services.GetRequiredService<ISecretStore>();
+        var switcher = services.GetRequiredService<GatewaySwitcher>();
         var client = (GatewayClient)services.GetRequiredService<IGatewayClient>();
 
-        var saved = await settings.LoadAsync<ConnectionSettings>(SettingsViewModel.SettingsName);
-        if (saved is not null && ConnectionValidation.IsValidBaseUrl(saved.BaseUrl))
-        {
-            client.SetBaseUrl(new Uri(saved.BaseUrl.Trim()));
-        }
-
-        client.SetApiKey(await secrets.GetAsync(SettingsViewModel.ApiKeySecretName));
+        // Migrates the legacy single connection (settings blob "connection"
+        // + DPAPI secret "gateway-api-key") into the registry as its first
+        // entry — import, never orphan — then points the shared client at
+        // the active registry entry. Installs with no saved connection keep
+        // the DI default until the user connects.
+        await switcher.InitializeAsync(
+            client,
+            SettingsViewModel.SettingsName,
+            SettingsViewModel.ApiKeySecretName);
     }
 }

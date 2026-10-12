@@ -16,6 +16,14 @@ class GatewayPrefs(context: Context) {
         }
 
     /**
+     * True when the user ever saved a host (vs. the app default). Used by
+     * the connection-registry migration so a never-configured install does
+     * not gain a phantom "imported" entry.
+     */
+    val hostExplicitlySet: Boolean
+        get() = prefs.contains(KEY_HOST)
+
+    /**
      * Client-side default model id (e.g. "hermes-agent"), chosen on the
      * Models tab. Displayed in Chat; the current gateway API carries no
      * model field on chat/session calls, so this is a saved preference,

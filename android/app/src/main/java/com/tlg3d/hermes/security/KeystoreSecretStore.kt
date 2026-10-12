@@ -9,6 +9,11 @@ import androidx.security.crypto.MasterKey
  * [SecretStore] backed by the Android Keystore via EncryptedSharedPreferences
  * (AES256_GCM value encryption, AES256_SIV key encryption). Replaces the
  * plaintext persistence the Electron app currently uses (SCOPE.md §5).
+ *
+ * Backs the gateway connection registry (`gateway-api-key:<id>`) and the SSH
+ * host registry (`ssh-private-key:<id>`, `ssh-key-passphrase:<id>`,
+ * `ssh-password:<id>`): secrets are encrypted at rest and never appear in
+ * the registry JSON.
  */
 class KeystoreSecretStore(context: Context) : SecretStore {
 
@@ -25,13 +30,13 @@ class KeystoreSecretStore(context: Context) : SecretStore {
         )
     }
 
-    override fun saveApiKey(alias: String, apiKey: String) {
-        prefs.edit().putString(alias, apiKey).apply()
+    override fun saveSecret(alias: String, value: String) {
+        prefs.edit().putString(alias, value).apply()
     }
 
-    override fun getApiKey(alias: String): String? = prefs.getString(alias, null)
+    override fun getSecret(alias: String): String? = prefs.getString(alias, null)
 
-    override fun clearApiKey(alias: String) {
+    override fun clearSecret(alias: String) {
         prefs.edit().remove(alias).apply()
     }
 

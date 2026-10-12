@@ -15,6 +15,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -69,6 +70,13 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // Worker 4 (Phase 4): SSH terminal sessions. sshj is the maintained
+    // mainstream Java SSH client with an explicit Android configuration
+    // (AndroidConfig). Pinned exact — see DEPENDENCIES.md for source-verified
+    // licenses (sshj: Apache-2.0; transitives: asn-one Apache-2.0, slf4j MIT,
+    // Bouncy Castle: Bouncy Castle licence (MIT-style), eddsa CC0).
+    implementation("com.hierynomus:sshj:0.40.0")
+
     // Worker D: home-screen widget (Glance) + periodic refresh (WorkManager).
     // Pinned exact versions — see DEPENDENCIES.md for source-verified licenses.
     // 1.1.1, not 1.2.0: glance 1.2.0's AAR metadata requires compileSdk 35 +
@@ -86,6 +94,12 @@ dependencies {
     // explicit license-gate override for this test-only dependency.
     // See DEPENDENCIES.md.
     testImplementation("junit:junit:4.13.2")
+
+    // Worker 4 (Phase 4): on-device Keystore round-trip test for
+    // KeystoreSecretStore (src/androidTest). Apache-2.0 — see DEPENDENCIES.md.
+    // Runs on a device/emulator only; never in the JVM unit-test task.
+    androidTestImplementation("androidx.test:runner:1.6.1")
+    androidTestImplementation("androidx.test:core:1.6.1")
 }
 
 // Live-gateway protocol verification with the real OkHttpGatewayClient.
