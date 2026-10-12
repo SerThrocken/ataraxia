@@ -46,7 +46,7 @@ public sealed class TerminalScreenTests
     public void Backspace_ErasesPreviousChar()
     {
         var s = Screen();
-        Write(s, "ab\x08c");
+        Write(s, "ab\x08" + "c"); // \x08 must not run into the 'c' (C# \x takes up to 4 hex digits)
         Assert.Equal("ac", s.GetLineText(0));
     }
 
