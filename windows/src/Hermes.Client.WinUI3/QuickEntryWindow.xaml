@@ -1,0 +1,35 @@
+<Window
+    x:Class="Hermes.Client.WinUI3.QuickEntryWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <StackPanel Padding="16" Spacing="12">
+        <TextBlock Text="Quick entry"
+                   Style="{StaticResource SubtitleTextBlockStyle}" />
+        <TextBlock Text="Type and press Enter — it opens as a new chat."
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <TextBox x:Name="InputBox"
+                 AutomationProperties.Name="Quick entry text"
+                 PlaceholderText="Ask anything…"
+                 KeyDown="InputBox_KeyDown" />
+        <TextBlock x:Name="ErrorText"
+                   AutomationProperties.LiveSetting="Assertive"
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                   TextWrapping="Wrap"
+                   Visibility="Collapsed" />
+        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Content="Cancel"
+                    AutomationProperties.Name="Cancel quick entry"
+                    Click="CancelButton_Click" />
+            <Button Content="Send"
+                    AutomationProperties.Name="Send quick entry"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Click="SendButton_Click" />
+        </StackPanel>
+    </StackPanel>
+</Window>
