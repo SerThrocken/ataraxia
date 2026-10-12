@@ -14,8 +14,43 @@
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="12" MaxWidth="920" HorizontalAlignment="Left">
+            <TextBlock Text="Updates" Style="{StaticResource TitleTextBlockStyle}" />
+
+            <!-- This app's own self-updates (Velopack). -->
+            <TextBlock Text="App updates" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+            <TextBlock AutomationProperties.Name="App version">
+                <Run Text="This app: version " /><Run Text="{x:Bind ViewModel.Updates.CurrentVersion, Mode=OneWay}" />
+            </TextBlock>
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Check for updates"
+                        Command="{x:Bind ViewModel.CheckForUpdatesCommand}"
+                        AutomationProperties.Name="Check for app updates"
+                        ToolTipService.ToolTip="Ask the update feed for a newer version" />
+                <Button Content="Download update"
+                        Command="{x:Bind ViewModel.DownloadUpdateCommand}"
+                        AutomationProperties.Name="Download app update"
+                        ToolTipService.ToolTip="Download the newer version" />
+                <Button Content="Restart to install"
+                        Command="{x:Bind ViewModel.ApplyUpdateCommand}"
+                        AutomationProperties.Name="Restart to install update"
+                        ToolTipService.ToolTip="Apply the downloaded update and restart the app" />
+            </StackPanel>
+
+            <ProgressBar Value="{x:Bind ViewModel.Updates.Progress, Mode=OneWay}"
+                         Maximum="1"
+                         Visibility="{x:Bind ViewModel.Updates.IsBusy, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                         AutomationProperties.Name="Update download progress" />
+
+            <TextBlock Text="{x:Bind ViewModel.Updates.Message, Mode=OneWay}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="App update status" />
+
+            <!-- Gateway version (read-only: the gateway exposes no update APIs). -->
+            <TextBlock Text="Gateway" Style="{StaticResource SubtitleTextBlockStyle}" />
+
             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                <TextBlock Text="Updates" Style="{StaticResource TitleTextBlockStyle}" />
                 <Button Content="Refresh"
                         Command="{x:Bind ViewModel.RefreshCommand}"
                         AutomationProperties.Name="Refresh gateway version"
@@ -26,7 +61,6 @@
             </StackPanel>
 
             <TextBlock Text="{x:Bind ViewModel.Headline, Mode=OneWay}"
-                       Style="{StaticResource SubtitleTextBlockStyle}"
                        AutomationProperties.Name="Gateway version headline" />
 
             <TextBlock Text="{x:Bind ViewModel.Error, Mode=OneWay}"
@@ -38,18 +72,8 @@
             <InfoBar Severity="Informational"
                      IsOpen="True"
                      IsClosable="False"
-                     Message="{x:Bind ViewModel.Notice}"
-                     AutomationProperties.Name="Updates notice" />
-
-            <TextBlock Text="{x:Bind ViewModel.PendingMarkerNote}"
-                       Style="{StaticResource BodyTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       TextWrapping="Wrap" />
-
-            <TextBlock Text="{x:Bind ViewModel.Detail}"
-                       Style="{StaticResource BodyTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       TextWrapping="Wrap" />
+                     Message="{x:Bind ViewModel.GatewayNote}"
+                     AutomationProperties.Name="Gateway updates notice" />
         </StackPanel>
     </ScrollViewer>
 </Page>

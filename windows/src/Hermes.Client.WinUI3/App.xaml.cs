@@ -4,6 +4,8 @@ using Hermes.Client.WinUI3.Services;
 using Hermes.Client.WinUI3.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Velopack;
 
 namespace Hermes.Client.WinUI3;
 
@@ -20,6 +22,12 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // Velopack install/update/uninstall hooks: must run first. During
+        // those operations the hook executes and the process exits from
+        // inside Run(), so normal startup below only runs on a real launch.
+        // No-op in dev/debug builds (not a Velopack install).
+        VelopackApp.Build().Run();
+
         var services = new ServiceCollection();
 
         // Tailscale-first: the gateway binds 0.0.0.0:8642 on the Acer;
@@ -82,6 +90,14 @@ public partial class App : Application
             SettingsViewModel.SettingsName,
             SettingsViewModel.ApiKeySecretName));
         services.AddTransient<BackupViewModel>();
+
+        // Self-updates (Velopack, MIT — see DEPENDENCIES.md). No update feed
+        // is published yet, so FeedUrl stays null and the update page labels
+        // self-updates honestly unavailable. Set it when a feed exists;
+        // do NOT invent a feed URL.
+        services.AddSingleton(new AppUpdateOptions { FeedUrl = null });
+        services.AddSingleton<IAppUpdater, VelopackAppUpdater>();
+        services.AddTransient<UpdateCoordinator>();
         services.AddTransient<UpdatesViewModel>();
 
         // Session handoff QR (Ataraxia worker E): in-memory single-use token
@@ -118,6 +134,14 @@ public partial class App : Application
         services.AddSingleton<Services.RunToastService>();
         services.AddTransient<MissionControlViewModel>();
 
+        // System tray (H.NotifyIcon.WinUI, MIT) and the global quick-entry
+        // hotkey (Win32 RegisterHotKey via CsWin32). Both are singletons:
+        // the tray icon and the hotkey registration outlive any one window.
+        // The hotkey service is resolved on the UI thread in OnLaunched —
+        // its hidden message window must be created there.
+        services.AddSingleton<TrayService>();
+        services.AddSingleton<IHotkeyRegistrar, GlobalHotkeyService>();
+
         Services = services.BuildServiceProvider();
 
         _window = new MainWindow();
@@ -130,11 +154,77 @@ public partial class App : Application
 
         // Toast activation: approve/deny hit POST /v1/runs/{id}/approval,
         // then every toast deep-links back to the run in Mission Control.
-        Services.GetRequiredService<Services.RunToastService>().EnsureRegistered();
+        var toasts = Services.GetRequiredService<Services.RunToastService>();
+        toasts.EnsureRegistered();
         Microsoft.Windows.AppNotifications.AppNotificationManager.Default.NotificationInvoked +=
             (sender, toastArgs) => _ = HandleToastActivationAsync(toastArgs.Argument);
 
+        // System tray: context menu (show/hide, new chat, Mission Control,
+        // quit). The approval balloon rides the toast service's trigger
+        // point, so both surfaces fire together.
+        var tray = Services.GetRequiredService<TrayService>();
+        tray.Start(
+            toggleWindow: MainWindow.ToggleVisibility,
+            newChat: MainWindow.NewChatAsync,
+            missionControl: () => MainWindow.NavigateToMissionControl(),
+            quit: () => Application.Current.Exit());
+        toasts.ApprovalRequested += (_, e) => tray.ShowApprovalBalloon(e.RunId, e.Request);
+        _window.Closed += (_, _) =>
+        {
+            tray.Dispose();
+            Services.GetRequiredService<IHotkeyRegistrar>().Dispose();
+        };
+
+        // Global quick-entry hotkey: summon the box from anywhere. The
+        // binding itself is registered by SettingsViewModel once the saved
+        // value loads; this subscription only opens the window.
+        var hotkeys = Services.GetRequiredService<IHotkeyRegistrar>();
+        hotkeys.Pressed += (_, _) => _window.DispatcherQueue.TryEnqueue(OpenQuickEntry);
+
+        _ = MaybeShowTrayHintAsync();
         _ = InitializeGatewayClientAsync(Services);
+    }
+
+    private QuickEntryWindow? _quickEntry;
+
+    private void OpenQuickEntry()
+    {
+        if (_quickEntry is not null)
+        {
+            _quickEntry.Activate();
+            return;
+        }
+
+        _quickEntry = new QuickEntryWindow();
+        _quickEntry.Closed += (_, _) => _quickEntry = null;
+        _quickEntry.Activate();
+    }
+
+    /// <summary>
+    /// One-time hint: Windows 11 hides new tray icons by default, so without
+    /// this the tray icon looks broken on first launch.
+    /// </summary>
+    private async Task MaybeShowTrayHintAsync()
+    {
+        var settings = Services.GetRequiredService<ISettingsService>();
+        var tray = await settings.LoadAsync<TraySettings>(SettingsViewModel.TraySettingsName)
+            ?? new TraySettings();
+        var xamlRoot = (_window?.Content as FrameworkElement)?.XamlRoot;
+        if (tray.TrayHintShown || xamlRoot is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Ataraxia lives in the system tray",
+            Content = "Windows 11 hides new tray icons by default. To keep Ataraxia " +
+                      "visible, open Taskbar Settings → Other system tray icons and turn it on.",
+            CloseButtonText = "Got it",
+            XamlRoot = xamlRoot,
+        };
+        _ = await dialog.ShowAsync();
+        await settings.SaveAsync(SettingsViewModel.TraySettingsName, tray with { TrayHintShown = true });
     }
 
     private async Task HandleToastActivationAsync(string argument)
