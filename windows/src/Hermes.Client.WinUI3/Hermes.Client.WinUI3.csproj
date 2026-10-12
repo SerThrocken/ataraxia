@@ -34,4 +34,16 @@
     </Content>
   </ItemGroup>
 
+  <!--
+    The app icon binary cannot be pushed through the text-only file API, so the
+    repo carries Assets/ataraxia.ico.b64 (base64 text) and this target decodes it
+    to Assets/ataraxia.ico before the build needs it. Incremental: skipped when
+    the .ico is newer than the .b64. The generated .ico is git-ignored.
+  -->
+  <Target Name="DecodeAppIcon" BeforeTargets="PrepareForBuild"
+          Inputs="$(ProjectDir)Assets\ataraxia.ico.b64"
+          Outputs="$(ProjectDir)Assets\ataraxia.ico">
+    <Exec Command="powershell -NoProfile -Command &quot;[IO.File]::WriteAllBytes('$(ProjectDir)Assets\ataraxia.ico', [Convert]::FromBase64String([IO.File]::ReadAllText('$(ProjectDir)Assets\ataraxia.ico.b64')))&quot;" />
+  </Target>
+
 </Project>

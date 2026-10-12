@@ -31,3 +31,6 @@ desktop.ini
 
 # Test results
 TestResults/
+
+# Generated at build time from ataraxia.ico.b64 (binary cannot be pushed via text API)
+**/Assets/ataraxia.ico
