@@ -87,13 +87,39 @@ public sealed class ConPtyBackend : ITerminalBackend
     private SafeFileHandle? _inputWrite; // our end: we write the child's stdin
     private SafeFileHandle? _outputRead; // our end: we read the child's stdout
     private ClosePseudoConsoleSafeHandle? _pseudoConsole;
-    private HANDLE _process; // raw: kept for TerminateProcess/GetExitCodeProcess
-    private HANDLE _job;
+    private IntPtr _process; // raw: process/job APIs below take IntPtr
+    private IntPtr _job;
     private Process? _watchedProcess;
     private Thread? _readerThread;
     private int _exitSignaled;
     private int _disposed;
     private bool _started;
+
+    // The job/process APIs are declared explicitly (rather than via CsWin32's
+    // friendly overloads) so the handle types are unambiguous: raw IntPtr
+    // throughout. Signatures from the documented kernel32 API.
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateJobObject(IntPtr lpJobAttributes, string? lpName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetInformationJobObject(
+        IntPtr hJob, int jobObjectInformationClass,
+        ref JOBOBJECT_EXTENDED_LIMIT_INFORMATION lpJobObjectInformation,
+        uint cbJobObjectInformationLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool TerminateProcess(IntPtr hProcess, uint uExitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetExitCodeProcess(IntPtr hProcess, out uint lpExitCode);
+
+    private const int JobObjectExtendedLimitInformationClass = 9;
 
     public event EventHandler<ReadOnlyMemory<byte>>? OutputReceived;
     public event EventHandler<int>? Exited;
@@ -163,8 +189,9 @@ public sealed class ConPtyBackend : ITerminalBackend
                 lpAttributeList = (IntPtr)attrList,
             };
             var hpcHandle = hpc.DangerousGetHandle();
+            uint attrFlags = 0;
             if (!PInvoke.UpdateProcThreadAttribute(
-                    attrListTyped, 0, ProcThreadAttributePseudoConsole,
+                    attrListTyped, ref attrFlags, ProcThreadAttributePseudoConsole,
                     &hpcHandle, (nuint)sizeof(nint), null, null))
             {
                 Win32Throw("UpdateProcThreadAttribute");
@@ -194,7 +221,7 @@ public sealed class ConPtyBackend : ITerminalBackend
             // Adopted: the pseudoconsole now owns the child's pipe ends.
             _pseudoConsole = hpc;
             hpc = null;
-            _process = pi.hProcess;
+            _process = pi.hProcess.Value;
             _inputWrite = inputWrite;
             inputWrite = null;
             _outputRead = outputRead;
@@ -204,28 +231,28 @@ public sealed class ConPtyBackend : ITerminalBackend
             outputWrite?.Dispose();
             outputWrite = null;
             // pi.hThread is not needed; close it now.
-            if (!pi.hThread.IsNull)
+            if (pi.hThread.Value != IntPtr.Zero)
             {
-                PInvoke.CloseHandle(pi.hThread);
+                CloseHandle(pi.hThread.Value);
             }
 
             // Job object: closing it kills the whole tree (KILL_ON_JOB_CLOSE).
             // Best effort — if the process is already in a job this fails and
             // TerminateProcess still kills the direct child.
-            var job = PInvoke.CreateJobObject(null, default);
-            if (!job.IsNull)
+            var job = CreateJobObject(IntPtr.Zero, null);
+            if (job != IntPtr.Zero)
             {
                 var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
                 info.BasicLimitInformation.LimitFlags = JobObjectLimitKillOnJobClose;
-                if (PInvoke.SetInformationJobObject(job, JOBOBJECTINFOCLASS.JobObjectExtendedLimitInformation,
-                        &info, (uint)sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION))
-                    && PInvoke.AssignProcessToJobObject(job, _process))
+                if (SetInformationJobObject(job, JobObjectExtendedLimitInformationClass,
+                        ref info, (uint)sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION))
+                    && AssignProcessToJobObject(job, _process))
                 {
                     _job = job;
                 }
                 else
                 {
-                    PInvoke.CloseHandle(job);
+                    CloseHandle(job);
                 }
             }
 
@@ -258,15 +285,15 @@ public sealed class ConPtyBackend : ITerminalBackend
                 outputWrite?.Dispose();
                 hpc?.Dispose();
 
-                if (!pi.hProcess.IsNull)
+                if (pi.hProcess.Value != IntPtr.Zero)
                 {
                     PInvoke.TerminateProcess(pi.hProcess, 1);
                     PInvoke.CloseHandle(pi.hProcess);
                 }
 
-                if (!pi.hThread.IsNull)
+                if (pi.hThread.Value != IntPtr.Zero)
                 {
-                    PInvoke.CloseHandle(pi.hThread);
+                    CloseHandle(pi.hThread.Value);
                 }
 
                 _watchedProcess?.Dispose();
@@ -279,17 +306,17 @@ public sealed class ConPtyBackend : ITerminalBackend
                 _outputRead?.Dispose();
                 _outputRead = null;
 
-                if (!_process.IsNull)
+                if (_process != IntPtr.Zero)
                 {
-                    PInvoke.TerminateProcess(_process, 1);
-                    PInvoke.CloseHandle(_process);
-                    _process = default;
+                    TerminateProcess(_process, 1);
+                    CloseHandle(_process);
+                    _process = IntPtr.Zero;
                 }
 
-                if (!_job.IsNull)
+                if (_job != IntPtr.Zero)
                 {
-                    PInvoke.CloseHandle(_job);
-                    _job = default;
+                    CloseHandle(_job);
+                    _job = IntPtr.Zero;
                 }
             }
         }
@@ -336,16 +363,16 @@ public sealed class ConPtyBackend : ITerminalBackend
 
     public void Terminate()
     {
-        if (!_process.IsNull)
+        if (_process != IntPtr.Zero)
         {
-            PInvoke.TerminateProcess(_process, 1);
+            TerminateProcess(_process, 1);
         }
 
         // Closing the job handle kills the whole child tree (KILL_ON_JOB_CLOSE).
-        if (!_job.IsNull)
+        if (_job != IntPtr.Zero)
         {
-            PInvoke.CloseHandle(_job);
-            _job = default;
+            CloseHandle(_job);
+            _job = IntPtr.Zero;
         }
     }
 
@@ -371,10 +398,10 @@ public sealed class ConPtyBackend : ITerminalBackend
         _pseudoConsole?.Dispose();
         _pseudoConsole = null;
 
-        if (!_process.IsNull)
+        if (_process != IntPtr.Zero)
         {
-            PInvoke.CloseHandle(_process);
-            _process = default;
+            CloseHandle(_process);
+            _process = IntPtr.Zero;
         }
 
         _watchedProcess?.Dispose();
@@ -415,7 +442,7 @@ public sealed class ConPtyBackend : ITerminalBackend
         }
 
         uint code = 0;
-        if (!_process.IsNull && PInvoke.GetExitCodeProcess(_process, out code) && code != StillActive)
+        if (!_process.IsNull && GetExitCodeProcess(_process, out code) && code != StillActive)
         {
             SignalExited((int)code);
         }
@@ -429,7 +456,7 @@ public sealed class ConPtyBackend : ITerminalBackend
         }
 
         uint code = 0;
-        if (!_process.IsNull && PInvoke.GetExitCodeProcess(_process, out code) && code != StillActive)
+        if (!_process.IsNull && GetExitCodeProcess(_process, out code) && code != StillActive)
         {
             SignalExited((int)code);
         }
