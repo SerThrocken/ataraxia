@@ -1,0 +1,5 @@
+RegisterHotKey
+UnregisterHotKey
+SetWindowSubclass
+RemoveWindowSubclass
+DefSubclassProc
