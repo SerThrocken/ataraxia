@@ -1,8 +1,13 @@
 package com.tlg3d.hermes.ui.screens
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,13 +18,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Stop
@@ -43,6 +51,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -56,9 +66,14 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tlg3d.hermes.HermesApp
 import com.tlg3d.hermes.network.ApprovalRequest
+import com.tlg3d.hermes.network.ChatImageAttachment
 import com.tlg3d.hermes.network.GatewayClient
 import com.tlg3d.hermes.network.Session
 import com.tlg3d.hermes.network.StreamEvent
+import com.tlg3d.hermes.share.SharePayload
+import java.io.ByteArrayOutputStream
+import kotlin.math.max
+import com.tlg3d.hermes.runs.trackActiveRun
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -71,6 +86,13 @@ data class UiMessage(
     val role: String,
     val content: String,
     val pending: Boolean = false,
+)
+
+/** A shared/picked image: bitmap preview for the composer + gateway payload. */
+data class AttachedImage(
+    val preview: Bitmap,
+    val attachment: ChatImageAttachment,
+    val source: String,
 )
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
@@ -99,10 +121,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var defaultModel by mutableStateOf<String?>(null)
         private set
+    var attachedImages = mutableStateListOf<AttachedImage>()
+        private set
 
     private val prefs get() = hermesApp.gatewayPrefs
     private var preselectedId: String? = null
     private var messagesFor: String? = null
+    private var pendingShare: SharePayload? = null
 
     private var streamJob: Job? = null
 
@@ -119,6 +144,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             preselectedId = null
         }
         refreshSessions()
+        pendingShare?.let {
+            pendingShare = null
+            startSharedChat(c, it)
+        }
     }
 
     /** Re-read the saved default model (it may have changed on the Models tab). */
@@ -196,20 +225,106 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Opens a fresh session for a share-sheet payload: shared text goes into
+     * the composer (the user reviews and taps Send), shared images attach as
+     * thumbnails. Arriving before [connect] finishes parks the payload until
+     * the client exists.
+     */
+    fun applySharedContent(payload: SharePayload) {
+        val c = client
+        if (c == null) {
+            pendingShare = payload
+            connect()
+            return
+        }
+        startSharedChat(c, payload)
+    }
+
+    private fun startSharedChat(c: GatewayClient, payload: SharePayload) {
+        loading = true
+        error = null
+        viewModelScope.launch {
+            try {
+                val s = withContext(Dispatchers.IO) { c.createSession("Shared content") }
+                sessions.add(0, s)
+                selectedSessionId = s.id
+                messagesFor = s.id
+                messages.clear()
+                pendingApproval = null
+                reasoningText = ""
+                input = payload.text.orEmpty()
+                attachedImages.clear()
+                if (payload.imageUriStrings.isNotEmpty()) {
+                    attachedImages.addAll(
+                        withContext(Dispatchers.IO) { loadSharedImages(payload.imageUriStrings) },
+                    )
+                }
+            } catch (e: Exception) {
+                error = describeGatewayError(e)
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    fun removeAttachedImage(image: AttachedImage) {
+        attachedImages.remove(image)
+    }
+
+    /**
+     * Reads shared image URIs into downscaled JPEG payloads. Images are
+     * bounded to [SHARE_IMAGE_MAX_DIM] px so a share stays a reasonable
+     * request body; at most [MAX_SHARE_IMAGES] are kept.
+     */
+    private fun loadSharedImages(uriStrings: List<String>): List<AttachedImage> {
+        return uriStrings.take(MAX_SHARE_IMAGES).mapNotNull { raw ->
+            runCatching {
+                val uri = Uri.parse(raw)
+                val bitmap = decodeBoundedBitmap(uri) ?: return@runCatching null
+                val out = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                AttachedImage(bitmap, ChatImageAttachment(out.toByteArray(), "image/jpeg"), raw)
+            }.getOrNull()
+        }
+    }
+
+    private fun decodeBoundedBitmap(uri: Uri): Bitmap? {
+        val resolver = getApplication<Application>().contentResolver
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        val maxDim = max(bounds.outWidth, bounds.outHeight)
+        if (maxDim <= 0) return null
+        var sample = 1
+        while (maxDim / sample > SHARE_IMAGE_MAX_DIM) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        return resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+    }
+
     fun send() {
         val c = client ?: return
         val sessionId = selectedSessionId ?: return
         val text = input.trim()
-        if (text.isEmpty() || streaming) return
+        val images = attachedImages.toList()
+        if ((text.isEmpty() && images.isEmpty()) || streaming) return
         input = ""
+        attachedImages.clear()
         error = null
         reasoningText = ""
-        messages.add(UiMessage("u${messages.size}", "user", text))
+        val shown = text +
+            if (images.isNotEmpty()) "\n[${images.size} image${if (images.size == 1) "" else "s"} attached]" else ""
+        messages.add(UiMessage("u${messages.size}", "user", shown.ifEmpty { "[image]" }))
         messages.add(UiMessage("pending", "assistant", "", pending = true))
         streaming = true
         streamJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                c.streamChat(sessionId, text, ::onStreamEvent)
+                if (images.isEmpty()) c.streamChat(sessionId, text, ::onStreamEvent)
+                else c.streamChatImages(
+                    sessionId,
+                    text,
+                    images.map { it.attachment },
+                    ::onStreamEvent,
+                )
             } catch (e: CancellationException) {
                 throw e // user hit Stop; not an error
             } catch (e: Exception) {
@@ -232,7 +347,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     finalizePending(event.content)
                     streaming = false
                 }
-                is StreamEvent.Approval -> pendingApproval = event.request
+                is StreamEvent.Approval -> {
+                    pendingApproval = event.request
+                    // The approval event carries the run id: raise the
+                    // persistent Stop/Steer controls for this run.
+                    trackActiveRun(hermesApp, event.request.runId)
+                }
                 is StreamEvent.Failed -> {
                     dropPending()
                     error = event.message
@@ -286,10 +406,22 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         messages.removeAll { it.pending }
     }
 
+    companion object {
+        /** Longest image edge after downscaling (keeps share payloads small). */
+        const val SHARE_IMAGE_MAX_DIM = 1280
+
+        /** Max images kept per share; the gateway also caps parts server-side. */
+        const val MAX_SHARE_IMAGES = 4
+    }
+
 }
 
 @Composable
-fun ChatScreen(initialSessionId: String? = null) {
+fun ChatScreen(
+    initialSessionId: String? = null,
+    sharedContent: SharePayload? = null,
+    onSharedConsumed: () -> Unit = {},
+) {
     val app = LocalContext.current.applicationContext as HermesApp
     val vm: ChatViewModel = viewModel(
         factory = object : ViewModelProvider.Factory {
@@ -303,6 +435,13 @@ fun ChatScreen(initialSessionId: String? = null) {
     LaunchedEffect(initialSessionId) {
         vm.refreshDefaultModel()
         if (initialSessionId != null) vm.openSession(initialSessionId)
+    }
+    // A share from another app opens a fresh session with the composer prefilled.
+    LaunchedEffect(sharedContent) {
+        if (sharedContent != null) {
+            vm.applySharedContent(sharedContent)
+            onSharedConsumed()
+        }
     }
 
     if (vm.needsKey) {
@@ -542,10 +681,35 @@ private fun ApprovalCard(req: ApprovalRequest, onChoice: (String) -> Unit) {
 
 @Composable
 private fun Composer(vm: ChatViewModel) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(12.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
+    Column(Modifier.fillMaxWidth()) {
+        if (vm.attachedImages.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                    .semantics { contentDescription = "Attached images" },
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(vm.attachedImages, key = { it.source }) { image ->
+                    Box {
+                        Image(
+                            bitmap = image.preview.asImageBitmap(),
+                            contentDescription = "Shared image attachment",
+                            modifier = Modifier.size(72.dp).clip(RoundedCornerShape(8.dp)),
+                        )
+                        IconButton(
+                            onClick = { vm.removeAttachedImage(image) },
+                            modifier = Modifier.size(28.dp).align(Alignment.TopEnd)
+                                .semantics { contentDescription = "Remove image" },
+                        ) {
+                            Icon(Icons.Filled.Close, contentDescription = null)
+                        }
+                    }
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
         OutlinedTextField(
             value = vm.input,
             onValueChange = { vm.input = it },
@@ -569,12 +733,14 @@ private fun Composer(vm: ChatViewModel) {
         } else {
             IconButton(
                 onClick = { vm.send() },
-                enabled = vm.input.isNotBlank() && vm.selectedSessionId != null,
+                enabled = (vm.input.isNotBlank() || vm.attachedImages.isNotEmpty())
+                    && vm.selectedSessionId != null,
                 modifier = Modifier.size(48.dp)
                     .semantics { contentDescription = "Send message" },
             ) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
             }
         }
+    }
     }
 }

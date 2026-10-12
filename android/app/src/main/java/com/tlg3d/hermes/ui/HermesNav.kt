@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Icon
@@ -23,6 +24,7 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -34,11 +36,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import androidx.navigation.compose.rememberNavController
+import com.tlg3d.hermes.share.SharePayload
 import com.tlg3d.hermes.ui.screens.ChatScreen
 import com.tlg3d.hermes.ui.screens.ModelsScreen
 import com.tlg3d.hermes.ui.screens.SessionsScreen
 import com.tlg3d.hermes.ui.screens.SettingsScreen
 import com.tlg3d.hermes.ui.screens.SkillsScreen
+import com.tlg3d.hermes.ui.screens.VoiceScreen
+import com.tlg3d.hermes.ui.screens.SteerScreen
 
 private enum class Destination(
     val route: String,
@@ -48,6 +53,7 @@ private enum class Destination(
     Chat("chat", "Chat", Icons.AutoMirrored.Filled.Chat),
     Sessions("sessions", "Sessions", Icons.Filled.Forum),
     Models("models", "Models", Icons.Filled.SmartToy),
+    Voice("voice", "Voice", Icons.Filled.Mic),
     Skills("skills", "Skills", Icons.Filled.Memory),
     Settings("settings", "Settings", Icons.Filled.Settings),
 }
@@ -57,10 +63,27 @@ private enum class Destination(
  * compact phone -> bottom bar, medium foldable -> nav rail,
  * expanded tablet -> permanent navigation drawer.
  */
+/**
+ * @param steerRunId when non-null, a deep-link request (e.g. from the
+ * persistent run notification) to open the steer input for that run.
+ * Consumed once via [onSteerConsumed].
+ */
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
-fun HermesNav(windowSizeClass: WindowSizeClass) {
+fun HermesNav(
+    windowSizeClass: WindowSizeClass,
+    steerRunId: String? = null,
+    onSteerConsumed: () -> Unit = {},
+    sharedContent: SharePayload? = null,
+    onSharedConsumed: () -> Unit = {},
+) {
     val navController = rememberNavController()
+    LaunchedEffect(steerRunId) {
+        if (steerRunId != null) {
+            navController.navigate("steer/$steerRunId")
+            onSteerConsumed()
+        }
+    }
     val destinations = Destination.entries
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination
@@ -70,6 +93,12 @@ fun HermesNav(windowSizeClass: WindowSizeClass) {
             launchSingleTop = true
             restoreState = true
         }
+    }
+
+    // A share from another app always opens a fresh chat, wherever the user was.
+    // ChatScreen consumes the payload (creates the session, prefills the composer).
+    LaunchedEffect(sharedContent) {
+        if (sharedContent != null) navigate(Destination.Chat)
     }
 
     val content: @Composable (Modifier) -> Unit = { modifier ->
@@ -88,8 +117,13 @@ fun HermesNav(windowSizeClass: WindowSizeClass) {
                     },
                 ),
             ) { entry ->
-                ChatScreen(initialSessionId = entry.arguments?.getString("sessionId"))
+                ChatScreen(
+                    initialSessionId = entry.arguments?.getString("sessionId"),
+                    sharedContent = sharedContent,
+                    onSharedConsumed = onSharedConsumed,
+                )
             }
+            composable(Destination.Voice.route) { VoiceScreen() }
             composable(Destination.Sessions.route) {
                 SessionsScreen(onOpenSession = { id ->
                     navController.navigate("${Destination.Chat.route}?sessionId=$id") {
@@ -102,6 +136,16 @@ fun HermesNav(windowSizeClass: WindowSizeClass) {
             composable(Destination.Models.route) { ModelsScreen() }
             composable(Destination.Skills.route) { SkillsScreen() }
             composable(Destination.Settings.route) { SettingsScreen() }
+            // Not a bottom-bar destination: reached via the run notification's
+            // "Steer run" action (MainActivity.EXTRA_STEER_RUN_ID deep link).
+            composable(
+                route = "steer/{runId}",
+                arguments = listOf(
+                    navArgument("runId") { type = NavType.StringType },
+                ),
+            ) { entry ->
+                SteerScreen(runId = entry.arguments?.getString("runId").orEmpty())
+            }
         }
     }
 
