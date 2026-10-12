@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Hermes.Client.Core;
 using Hermes.Client.Infrastructure;
+using Hermes.Client.WinUI3.Services;
 
 namespace Hermes.Client.WinUI3.ViewModels;
 
@@ -31,10 +32,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Public so the app bootstrap can materialize the shared gateway client.</summary>
     public const string SettingsName = "connection";
 
+    /// <summary>Settings-blob name for the tray + global-hotkey settings.</summary>
+    public const string TraySettingsName = "tray";
+
     private readonly ISettingsService _settings;
     private readonly ISecretStore _secrets;
     private readonly ConnectionTester _tester;
     private readonly IConnectionState _connectionState;
+    private readonly IHotkeyRegistrar _hotkeys;
 
     [ObservableProperty]
     public partial string BaseUrl { get; set; } = DefaultBaseUrl;
@@ -64,18 +69,28 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string ConnectionStateText { get; set; } = "Not tested yet";
 
+    /// <summary>Global quick-entry hotkey, e.g. "Ctrl+Shift+A".</summary>
+    [ObservableProperty]
+    public partial string HotkeyText { get; set; } = "Ctrl+Shift+A";
+
+    /// <summary>Status line under the hotkey box; carries conflict errors.</summary>
+    [ObservableProperty]
+    public partial string HotkeyStatus { get; set; } = string.Empty;
+
     public event EventHandler? ContinueRequested;
 
     public SettingsViewModel(
         ISettingsService settings,
         ISecretStore secrets,
         ConnectionTester tester,
-        IConnectionState connectionState)
+        IConnectionState connectionState,
+        IHotkeyRegistrar hotkeys)
     {
         _settings = settings;
         _secrets = secrets;
         _tester = tester;
         _connectionState = connectionState;
+        _hotkeys = hotkeys;
         _connectionState.StateChanged += (_, state) => ConnectionStateText = state switch
         {
             ConnectionState.Connected => "Connected",
@@ -96,6 +111,50 @@ public sealed partial class SettingsViewModel : ObservableObject
         KeyStatusText = HasStoredKey
             ? "API key saved (DPAPI-encrypted)."
             : "No API key saved yet.";
+
+        await InitializeTrayAsync();
+    }
+
+    /// <summary>
+    /// Loads the saved hotkey and registers it. A conflict is reported in
+    /// <see cref="HotkeyStatus"/> — never a crash, never silent.
+    /// </summary>
+    private async Task InitializeTrayAsync()
+    {
+        var saved = await _settings.LoadAsync<TraySettings>(TraySettingsName);
+        if (saved is not null && HotkeyBinding.TryParse(saved.Hotkey, out var parsed) && parsed is not null)
+        {
+            HotkeyText = parsed.ToString();
+        }
+
+        if (HotkeyBinding.TryParse(HotkeyText, out var binding) && binding is not null)
+        {
+            if (!_hotkeys.TryRegister(binding, out var error))
+            {
+                HotkeyStatus = error ?? "Couldn't register the global hotkey.";
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task ApplyHotkeyAsync()
+    {
+        if (!HotkeyBinding.TryParse(HotkeyText, out var binding) || binding is null)
+        {
+            HotkeyStatus = "That combo didn't parse — try something like Ctrl+Shift+A.";
+            return;
+        }
+
+        if (!_hotkeys.TryRegister(binding, out var error))
+        {
+            HotkeyStatus = error ?? "Couldn't register that hotkey.";
+            return;
+        }
+
+        HotkeyText = binding.ToString();
+        var saved = await _settings.LoadAsync<TraySettings>(TraySettingsName) ?? new TraySettings();
+        await _settings.SaveAsync(TraySettingsName, saved with { Hotkey = binding.ToString() });
+        HotkeyStatus = $"Global hotkey set to {binding}.";
     }
 
     [RelayCommand]

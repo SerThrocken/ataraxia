@@ -10,10 +10,23 @@ namespace Hermes.Client.WinUI3.Services;
 /// deep-links back to the run in Mission Control. Activation arguments
 /// carry only run ids and request ids — never secrets or key material.
 /// </summary>
+/// <summary>
+/// Raised for every approval request, from the same trigger point as the
+/// toast (<see cref="RunToastService.ShowApproval"/>). The tray balloon
+/// subscribes here so the two surfaces can never drift apart.
+/// </summary>
+public sealed class ApprovalRequestedEventArgs(string runId, ApprovalRequest request) : EventArgs
+{
+    public string RunId { get; } = runId;
+    public ApprovalRequest Request { get; } = request;
+}
+
 public sealed class RunToastService
 {
     /// <summary>Registers the toast activator. Call once at app launch.</summary>
     public void EnsureRegistered() => AppNotificationManager.Default.Register();
+
+    public event EventHandler<ApprovalRequestedEventArgs>? ApprovalRequested;
 
     /// <summary>
     /// Urgent toast for a pending dangerous-command approval. The buttons
@@ -23,6 +36,7 @@ public sealed class RunToastService
     public void ShowApproval(string runId, ApprovalRequest request)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(runId);
+        ApprovalRequested?.Invoke(this, new ApprovalRequestedEventArgs(runId, request));
         var builder = new AppNotificationBuilder()
             .SetScenario(AppNotificationScenario.Urgent)
             .AddText("Approval needed")

@@ -59,6 +59,24 @@
                        Style="{StaticResource BodyTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
+            <TextBlock Text="Quick entry" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock Text="A system-wide hotkey that summons a quick-entry box from any app."
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
+            <TextBox Header="Global hotkey"
+                     AutomationProperties.Name="Global quick entry hotkey"
+                     Text="{x:Bind ViewModel.HotkeyText, Mode=TwoWay}"
+                     PlaceholderText="Ctrl+Shift+A" />
+            <Button Content="Apply hotkey"
+                    AutomationProperties.Name="Apply global hotkey"
+                    Command="{x:Bind ViewModel.ApplyHotkeyCommand}"
+                    HorizontalAlignment="Left" />
+            <TextBlock Text="{x:Bind ViewModel.HotkeyStatus, Mode=OneWay}"
+                       AutomationProperties.LiveSetting="Assertive"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       TextWrapping="Wrap" />
+
             <TextBlock Text="Import" Style="{StaticResource SubtitleTextBlockStyle}" />
             <TextBlock Text="Copy a saved connection and desktop settings from the Hermes desktop app (Electron). API keys go straight into encrypted Windows storage."
                        Style="{StaticResource BodyTextBlockStyle}"
