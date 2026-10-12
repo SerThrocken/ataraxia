@@ -23,8 +23,8 @@ GetExitCodeProcess
 CreateJobObject
 SetInformationJobObject
 AssignProcessToJobObject
-GetWindowLongPtr
-SetWindowLongPtr
+GetWindowLongPtrW
+SetWindowLongPtrW
 SetWindowPos
 ShowWindow
 SetLayeredWindowAttributes

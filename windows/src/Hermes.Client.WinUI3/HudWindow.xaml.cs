@@ -22,6 +22,9 @@ namespace Hermes.Client.WinUI3;
 /// </summary>
 public sealed partial class HudWindow : Window
 {
+    // GWL_EXSTYLE (-20): WINDOW_LONG_PTR_INDEX is internal to CsWin32, so the
+    // documented value is used directly.
+    private const int GwlExStyle = -20;
     private readonly HWND _hwnd;
     private readonly HudViewModel _viewModel;
     private bool _dragging;
@@ -49,11 +52,11 @@ public sealed partial class HudWindow : Window
         }
 
         // The never-disturb contract, applied before the first show.
-        var exStyle = (uint)PInvoke.GetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+        var exStyle = (uint)PInvoke.GetWindowLongPtrW(_hwnd, GwlExStyle);
         exStyle = HudNativeStyle.WithNoActivate(exStyle);
         exStyle = HudNativeStyle.WithLayered(exStyle);
         exStyle = HudNativeStyle.WithToolWindow(exStyle);
-        PInvoke.SetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, (nint)exStyle);
+        PInvoke.SetWindowLongPtrW(_hwnd, GwlExStyle, (nint)exStyle);
         PInvoke.SetWindowPos(
             _hwnd,
             HWND.Null,
@@ -114,10 +117,10 @@ public sealed partial class HudWindow : Window
 
     private void ApplyClickThrough(bool clickThrough)
     {
-        var exStyle = (uint)PInvoke.GetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
-        PInvoke.SetWindowLongPtr(
+        var exStyle = (uint)PInvoke.GetWindowLongPtrW(_hwnd, GwlExStyle);
+        PInvoke.SetWindowLongPtrW(
             _hwnd,
-            WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
+            GwlExStyle,
             (nint)HudNativeStyle.WithClickThrough(exStyle, clickThrough));
     }
 

@@ -207,8 +207,9 @@ public sealed class ConPtyBackend : ITerminalBackend
             var cmdChars = commandLine.ToCharArray();
             fixed (char* cmdPtr = cmdChars)
             {
+                var cmdWstr = new PWSTR(cmdPtr);
                 if (!PInvoke.CreateProcess(
-                        default, new PWSTR(cmdPtr),
+                        default, ref cmdWstr,
                         null, null, true,
                         (PROCESS_CREATION_FLAGS)(ExtendedStartupinfoPresent | CreateUnicodeEnvironment),
                         null, default,
@@ -221,7 +222,7 @@ public sealed class ConPtyBackend : ITerminalBackend
             // Adopted: the pseudoconsole now owns the child's pipe ends.
             _pseudoConsole = hpc;
             hpc = null;
-            _process = pi.hProcess.Value;
+            _process = (IntPtr)pi.hProcess.Value;
             _inputWrite = inputWrite;
             inputWrite = null;
             _outputRead = outputRead;
@@ -231,9 +232,9 @@ public sealed class ConPtyBackend : ITerminalBackend
             outputWrite?.Dispose();
             outputWrite = null;
             // pi.hThread is not needed; close it now.
-            if (pi.hThread.Value != IntPtr.Zero)
+            if ((IntPtr)pi.hThread.Value != IntPtr.Zero)
             {
-                CloseHandle(pi.hThread.Value);
+                CloseHandle((IntPtr)pi.hThread.Value);
             }
 
             // Job object: closing it kills the whole tree (KILL_ON_JOB_CLOSE).
@@ -285,15 +286,15 @@ public sealed class ConPtyBackend : ITerminalBackend
                 outputWrite?.Dispose();
                 hpc?.Dispose();
 
-                if (pi.hProcess.Value != IntPtr.Zero)
+                if ((IntPtr)pi.hProcess.Value != IntPtr.Zero)
                 {
-                    TerminateProcess(pi.hProcess.Value, 1);
-                    CloseHandle(pi.hProcess.Value);
+                    TerminateProcess((IntPtr)pi.hProcess.Value, 1);
+                    CloseHandle((IntPtr)pi.hProcess.Value);
                 }
 
-                if (pi.hThread.Value != IntPtr.Zero)
+                if ((IntPtr)pi.hThread.Value != IntPtr.Zero)
                 {
-                    CloseHandle(pi.hThread.Value);
+                    CloseHandle((IntPtr)pi.hThread.Value);
                 }
 
                 _watchedProcess?.Dispose();
