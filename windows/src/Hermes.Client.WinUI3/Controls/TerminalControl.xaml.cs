@@ -36,7 +36,7 @@ public sealed partial class TerminalControl : UserControl
     private const uint SlateArgb = 0xFF0D1417;
     private const uint CreamArgb = 0xFFF5EFE0;
     private const uint AmberArgb = 0xFFE8B45A;
-    private const double FontSize = 14;
+    private const double TerminalFontSize = 14;
 
     private readonly ObservableCollection<TerminalRow> _rows = new();
     private readonly Dictionary<uint, SolidColorBrush> _brushes = new();
@@ -162,7 +162,7 @@ public sealed partial class TerminalControl : UserControl
         var probe = new TextBlock
         {
             FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
-            FontSize = FontSize,
+            FontSize = TerminalFontSize,
             Text = new string('M', 64),
         };
         probe.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
