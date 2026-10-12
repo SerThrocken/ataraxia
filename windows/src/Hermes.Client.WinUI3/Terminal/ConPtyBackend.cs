@@ -121,12 +121,12 @@ public sealed class ConPtyBackend : ITerminalBackend
                 nLength = (uint)sizeof(SECURITY_ATTRIBUTES),
                 bInheritHandle = true,
             };
-            if (!PInvoke.CreatePipe(out inputRead, out inputWrite, &sa, 0))
+            if (!PInvoke.CreatePipe(out inputRead, out inputWrite, sa, 0))
             {
                 Win32Throw("CreatePipe (stdin)");
             }
 
-            if (!PInvoke.CreatePipe(out outputRead, out outputWrite, &sa, 0))
+            if (!PInvoke.CreatePipe(out outputRead, out outputWrite, sa, 0))
             {
                 Win32Throw("CreatePipe (stdout)");
             }
@@ -134,8 +134,8 @@ public sealed class ConPtyBackend : ITerminalBackend
             // Our ends must not be inherited by the child: the child talks
             // to the pseudoconsole, not to our pipe ends. (If it inherited
             // them, the output pipe would never break on exit.)
-            PInvoke.SetHandleInformation(inputWrite, HandleFlagInherit, 0);
-            PInvoke.SetHandleInformation(outputRead, HandleFlagInherit, 0);
+            PInvoke.SetHandleInformation(new HANDLE(inputWrite.DangerousGetHandle()), HandleFlagInherit, 0);
+            PInvoke.SetHandleInformation(new HANDLE(outputRead.DangerousGetHandle()), HandleFlagInherit, 0);
 
             var size = new COORD
             {
@@ -159,7 +159,7 @@ public sealed class ConPtyBackend : ITerminalBackend
 
             var siex = new STARTUPINFOEX
             {
-                StartupInfo = { cb = (uint)sizeof(STARTUPINFO) },
+                StartupInfo = { cb = (uint)sizeof(STARTUPINFOEX) },
                 lpAttributeList = (IntPtr)attrList,
             };
             var hpcHandle = hpc.DangerousGetHandle();
@@ -171,17 +171,21 @@ public sealed class ConPtyBackend : ITerminalBackend
             }
 
             // CreateProcess may modify the command-line buffer: pass a copy.
+            // The CsWin32 overload takes `in STARTUPINFOW`: passing the
+            // embedded StartupInfo by readonly reference works because
+            // STARTUPINFOEX is layout-sequential with STARTUPINFO first, and
+            // EXTENDED_STARTUPINFO_PRESENT tells CreateProcess to read the
+            // attribute list that follows it.
             var commandLine = string.IsNullOrWhiteSpace(arguments) ? fileName : fileName + " " + arguments;
             var cmdChars = commandLine.ToCharArray();
             fixed (char* cmdPtr = cmdChars)
-            fixed (STARTUPINFOEX* siexPtr = &siex)
             {
                 if (!PInvoke.CreateProcess(
                         default, new PWSTR(cmdPtr),
                         null, null, true,
                         (PROCESS_CREATION_FLAGS)(ExtendedStartupinfoPresent | CreateUnicodeEnvironment),
                         null, default,
-                        (STARTUPINFO*)siexPtr, &pi))
+                        in siex.StartupInfo, out pi))
                 {
                     Win32Throw("CreateProcess");
                 }

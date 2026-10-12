@@ -362,16 +362,15 @@ public sealed partial class TerminalControl : UserControl
         var r = new Run { Text = text };
         if (isCursor)
         {
-            r.Foreground = BrushFor(SlateArgb);
-            r.Background = BrushFor(AmberArgb);
+            // WinUI's Run has no Background: the block cursor is an amber
+            // foreground glyph instead of an inverted cell.
+            r.Foreground = BrushFor(AmberArgb);
         }
         else
         {
             r.Foreground = BrushFor(run.ForegroundArgb == 0 ? CreamArgb : run.ForegroundArgb);
-            if (run.BackgroundArgb != 0)
-            {
-                r.Background = BrushFor(run.BackgroundArgb);
-            }
+            // Note: per-cell background colors are not rendered — WinUI's Run
+            // has no Background property. Foreground colors carry the output.
 
             if (run.Bold)
             {
