@@ -18,6 +18,7 @@ namespace Hermes.Client.WinUI3;
 public sealed partial class MainWindow : Window, ICommandPaletteHost
 {
     private static MainWindow? _current;
+    private static bool _trayHidden;
     private readonly IConnectionState _connectionState = App.Services.GetRequiredService<IConnectionState>();
     private readonly IGatewayClient _gatewayClient = App.Services.GetRequiredService<IGatewayClient>();
     private readonly TaskbarProgressController _taskbarProgress;
@@ -192,6 +193,50 @@ public sealed partial class MainWindow : Window, ICommandPaletteHost
                 : vm.InputText.TrimEnd() + " " + text;
             chatPage.FocusComposer();
         }
+    }
+
+    /// <summary>
+    /// Shows the window if the tray hid it, hides it otherwise (tray
+    /// context menu). Hiding keeps the process alive in the tray; the X
+    /// button still quits.
+    /// </summary>
+    public static void ToggleVisibility()
+    {
+        var current = _current;
+        var appWindow = current?.GetAppWindow();
+        if (current is null || appWindow is null)
+        {
+            return;
+        }
+
+        if (_trayHidden)
+        {
+            _trayHidden = false;
+            appWindow.Show();
+            current.Activate();
+        }
+        else
+        {
+            _trayHidden = true;
+            appWindow.Hide();
+        }
+    }
+
+    /// <summary>Starts a new chat (tray menu, command palette, quick entry).</summary>
+    public static async Task NewChatAsync()
+    {
+        var current = _current;
+        if (current is null)
+        {
+            return;
+        }
+
+        // The window may be tray-hidden; bring it back for the new session.
+        _trayHidden = false;
+        current.GetAppWindow()?.Show();
+        current.Activate();
+
+        await current.NewSessionAsync();
     }
 
     private async Task NewSessionAsync()
