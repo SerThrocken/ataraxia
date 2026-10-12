@@ -1,3 +1,4 @@
+using Xunit;
 using Hermes.Client.Core;
 using Hermes.Client.Infrastructure;
 

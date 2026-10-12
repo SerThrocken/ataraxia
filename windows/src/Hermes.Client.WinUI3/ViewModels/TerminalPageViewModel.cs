@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Hermes.Client.Core;
 using Hermes.Client.Core.Terminal;
 using Hermes.Client.Infrastructure;
 using Hermes.Client.WinUI3.Terminal;

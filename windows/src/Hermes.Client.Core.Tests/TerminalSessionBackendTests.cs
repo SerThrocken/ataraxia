@@ -1,3 +1,4 @@
+using Xunit;
 using System.Text;
 using Hermes.Client.Core.Terminal;
 

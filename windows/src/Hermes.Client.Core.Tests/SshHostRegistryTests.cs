@@ -1,3 +1,4 @@
+using Xunit;
 using Hermes.Client.Core;
 
 namespace Hermes.Client.Core.Tests;
