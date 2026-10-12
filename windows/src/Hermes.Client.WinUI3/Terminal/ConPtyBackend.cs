@@ -137,7 +137,7 @@ public sealed class ConPtyBackend : ITerminalBackend
         SafeFileHandle? outputRead = null;
         SafeFileHandle? outputWrite = null;
         ClosePseudoConsoleSafeHandle? hpc = null;
-        void* attrList = null;
+        IntPtr attrList = IntPtr.Zero;
         PROCESS_INFORMATION pi = default;
 
         try
@@ -176,8 +176,8 @@ public sealed class ConPtyBackend : ITerminalBackend
 
             nuint attrSize = 0;
             _ = PInvoke.InitializeProcThreadAttributeList(default, 1, 0, &attrSize);
-            attrList = NativeMemory.Alloc(attrSize);
-            var attrListTyped = new LPPROC_THREAD_ATTRIBUTE_LIST(attrList);
+            attrList = (IntPtr)NativeMemory.Alloc(attrSize);
+            var attrListTyped = new LPPROC_THREAD_ATTRIBUTE_LIST((void*)attrList);
             if (!PInvoke.InitializeProcThreadAttributeList(attrListTyped, 1, 0, &attrSize))
             {
                 Win32Throw("InitializeProcThreadAttributeList");
@@ -186,12 +186,12 @@ public sealed class ConPtyBackend : ITerminalBackend
             var siex = new STARTUPINFOEX
             {
                 StartupInfo = { cb = (uint)sizeof(STARTUPINFOEX) },
-                lpAttributeList = (IntPtr)attrList,
+                lpAttributeList = attrList,
             };
             var hpcHandle = hpc.DangerousGetHandle();
             uint attrFlags = 0;
             if (!PInvoke.UpdateProcThreadAttribute(
-                    attrListTyped, ref attrFlags, ProcThreadAttributePseudoConsole,
+                    attrListTyped, attrFlags, ProcThreadAttributePseudoConsole,
                     &hpcHandle, (nuint)sizeof(nint), null, null))
             {
                 Win32Throw("UpdateProcThreadAttribute");
@@ -267,10 +267,10 @@ public sealed class ConPtyBackend : ITerminalBackend
         }
         finally
         {
-            if (attrList is not null)
+            if (attrList != IntPtr.Zero)
             {
-                PInvoke.DeleteProcThreadAttributeList(new LPPROC_THREAD_ATTRIBUTE_LIST(attrList));
-                NativeMemory.Free(attrList);
+                PInvoke.DeleteProcThreadAttributeList(new LPPROC_THREAD_ATTRIBUTE_LIST((void*)attrList));
+                NativeMemory.Free((void*)attrList);
             }
 
             if (!_started)
@@ -287,8 +287,8 @@ public sealed class ConPtyBackend : ITerminalBackend
 
                 if (pi.hProcess.Value != IntPtr.Zero)
                 {
-                    PInvoke.TerminateProcess(pi.hProcess, 1);
-                    PInvoke.CloseHandle(pi.hProcess);
+                    TerminateProcess(pi.hProcess.Value, 1);
+                    CloseHandle(pi.hProcess.Value);
                 }
 
                 if (pi.hThread.Value != IntPtr.Zero)
@@ -442,7 +442,7 @@ public sealed class ConPtyBackend : ITerminalBackend
         }
 
         uint code = 0;
-        if (!_process.IsNull && GetExitCodeProcess(_process, out code) && code != StillActive)
+        if (_process != IntPtr.Zero && GetExitCodeProcess(_process, out code) && code != StillActive)
         {
             SignalExited((int)code);
         }
@@ -456,7 +456,7 @@ public sealed class ConPtyBackend : ITerminalBackend
         }
 
         uint code = 0;
-        if (!_process.IsNull && GetExitCodeProcess(_process, out code) && code != StillActive)
+        if (_process != IntPtr.Zero && GetExitCodeProcess(_process, out code) && code != StillActive)
         {
             SignalExited((int)code);
         }
