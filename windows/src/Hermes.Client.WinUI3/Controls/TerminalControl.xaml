@@ -1,0 +1,29 @@
+<UserControl
+    x:Class="Hermes.Client.WinUI3.Controls.TerminalControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    IsTabStop="True"
+    AutomationProperties.Name="Terminal"
+    AutomationProperties.HelpText="Interactive terminal. Type to send input to the shell. Control C interrupts, Control V pastes."
+    AutomationProperties.LiveSetting="Polite">
+
+    <ScrollViewer x:Name="Scroller"
+                  HorizontalScrollMode="Disabled"
+                  VerticalScrollMode="Auto"
+                  VerticalScrollBarVisibility="Auto"
+                  AutomationProperties.Name="Terminal output">
+        <ItemsRepeater x:Name="Rows">
+            <ItemsRepeater.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock FontFamily="Cascadia Mono, Consolas"
+                               FontSize="14"
+                               LineStackingStrategy="BlockLineHeight"
+                               TextWrapping="NoWrap" />
+                </DataTemplate>
+            </ItemsRepeater.ItemTemplate>
+        </ItemsRepeater>
+    </ScrollViewer>
+</UserControl>
